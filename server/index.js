@@ -427,8 +427,47 @@ wss.on("connection", (ws, req) => {
   });
 });
 
+// --- Trigger auto-start from config ---
+
+function syncTriggersFromConfig() {
+  const cfg = readConfig();
+  const activeIds = new Set();
+
+  if (cfg.projects) {
+    for (const project of cfg.projects) {
+      if (project.trigger_enabled) {
+        activeIds.add(project.id);
+        const ms = (project.trigger_interval || 30) * 60 * 1000;
+        const existing = triggers.get(project.id);
+        // Only restart if interval changed or not running
+        if (!existing || existing.interval !== ms) {
+          if (existing && existing.timer) clearInterval(existing.timer);
+          const timer = setInterval(() => sendTriggerMessage(project.id), ms);
+          triggers.set(project.id, { interval: ms, timer, lastSent: null, nextAt: Date.now() + ms, lastError: null });
+        }
+      }
+    }
+  }
+
+  // Stop triggers for projects no longer enabled
+  for (const [id, info] of triggers) {
+    if (!activeIds.has(id)) {
+      if (info.timer) clearInterval(info.timer);
+      triggers.delete(id);
+    }
+  }
+}
+
+// Sync triggers when config changes (called after PUT /api/config from Next.js)
+app.post("/api/triggers/sync", (_req, res) => {
+  syncTriggersFromConfig();
+  res.json({ ok: true });
+});
+
 // --- Start ---
 
 server.listen(PORT, () => {
   console.log(`QuadWork server listening on http://localhost:${PORT}`);
+  // Auto-start enabled triggers from config
+  syncTriggersFromConfig();
 });
