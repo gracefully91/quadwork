@@ -232,6 +232,9 @@ function writeAgentChattrConfig(setup, configTomlPath) {
   for (const agent of AGENTS) {
     tomlContent = tomlContent.replace(`{{${agent}_cwd}}`, setup.worktrees[agent]);
   }
+  // Replace placeholders
+  tomlContent = tomlContent.replace(/\{\{project_name\}\}/g, setup.projectName);
+  tomlContent = tomlContent.replace(/\{\{repo\}\}/g, setup.repo);
   // Replace all agent commands with the chosen backend
   tomlContent = tomlContent.replace(/command = "(?:claude|codex)"/g, `command = "${setup.backend}"`);
 
