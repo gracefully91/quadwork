@@ -147,6 +147,16 @@ async function setupGitHub(rl) {
 async function setupAgents(rl, repo) {
   header("Step 3: Agent Configuration");
 
+  // Prompt for CLI backend
+  const hasClaude = which("claude");
+  const hasCodex = which("codex");
+  let defaultBackend = hasClaude ? "claude" : "codex";
+  const backend = await ask(rl, "CLI backend for agents (claude/codex)", defaultBackend);
+  if (backend !== "claude" && backend !== "codex") {
+    fail("Backend must be 'claude' or 'codex'");
+    return null;
+  }
+
   const projectDir = await ask(rl, "Project directory", process.cwd());
   const absDir = path.resolve(projectDir);
 
@@ -210,7 +220,7 @@ async function setupAgents(rl, repo) {
     ok("Copied CLAUDE.md to all worktrees");
   }
 
-  return { projectName, absDir, worktrees, repo };
+  return { projectName, absDir, worktrees, repo, backend };
 }
 
 // ─── AgentChattr Config ─────────────────────────────────────────────────────
@@ -222,12 +232,40 @@ function writeAgentChattrConfig(setup, configTomlPath) {
   for (const agent of AGENTS) {
     tomlContent = tomlContent.replace(`{{${agent}_cwd}}`, setup.worktrees[agent]);
   }
+  // Replace all agent commands with the chosen backend
+  tomlContent = tomlContent.replace(/command = "(?:claude|codex)"/g, `command = "${setup.backend}"`);
 
   // Write config.toml
   const configDir = path.dirname(configTomlPath);
   if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
   fs.writeFileSync(configTomlPath, tomlContent);
   ok(`Wrote ${configTomlPath}`);
+
+  // Install AgentChattr if missing, then start it
+  const acInstalled = run("agentchattr --version") || run("python3 -m agentchattr --version");
+  if (!acInstalled) {
+    log("Installing AgentChattr...");
+    const installResult = run("pip install agentchattr 2>&1");
+    if (installResult !== null) ok("Installed AgentChattr");
+    else warn("Failed to install AgentChattr — install manually: pip install agentchattr");
+  }
+
+  // Start AgentChattr server
+  log("Starting AgentChattr server...");
+  const acProc = spawn("agentchattr", ["--config", configTomlPath], {
+    stdio: "ignore",
+    detached: true,
+  });
+  acProc.unref();
+  if (acProc.pid) {
+    ok(`AgentChattr started (PID: ${acProc.pid})`);
+    // Save PID for stop
+    const pidFile = path.join(CONFIG_DIR, "agentchattr.pid");
+    if (!fs.existsSync(CONFIG_DIR)) fs.mkdirSync(CONFIG_DIR, { recursive: true });
+    fs.writeFileSync(pidFile, String(acProc.pid));
+  } else {
+    warn("Could not start AgentChattr — start manually: agentchattr --config " + configTomlPath);
+  }
 
   return configTomlPath;
 }
@@ -272,6 +310,24 @@ bridge_sender = "telegram-bridge"
 `;
         fs.appendFileSync(configTomlPath, telegramSection);
         ok("Added Telegram config to config.toml");
+
+        // Start Telegram bridge daemon
+        const bridgeScript = path.join(telegramDir, "telegram_bridge.py");
+        if (fs.existsSync(bridgeScript)) {
+          log("Starting Telegram bridge...");
+          const bridgeProc = spawn("python3", [bridgeScript, "--config", configTomlPath], {
+            stdio: "ignore",
+            detached: true,
+          });
+          bridgeProc.unref();
+          if (bridgeProc.pid) {
+            ok(`Telegram bridge started (PID: ${bridgeProc.pid})`);
+            const pidFile = path.join(CONFIG_DIR, "telegram-bridge.pid");
+            fs.writeFileSync(pidFile, String(bridgeProc.pid));
+          } else {
+            warn("Could not start Telegram bridge — start manually");
+          }
+        }
       }
     }
   }
@@ -287,6 +343,38 @@ bridge_sender = "telegram-bridge"
       else warn("Failed to clone — you can set it up manually later");
     } else {
       ok("agent-memory already present");
+    }
+
+    if (fs.existsSync(memoryDir)) {
+      // Verify butler scripts exist
+      const scriptsDir = path.join(memoryDir, "scripts");
+      const requiredScripts = ["butler-scan.sh", "butler-consolidate.sh", "inject.sh"];
+      for (const script of requiredScripts) {
+        const scriptPath = path.join(scriptsDir, script);
+        if (fs.existsSync(scriptPath)) {
+          // Ensure executable
+          try { fs.chmodSync(scriptPath, 0o755); } catch {}
+        } else {
+          warn(`Butler script not found: ${scriptPath}`);
+        }
+      }
+      ok("Butler scripts verified");
+
+      // Create project short-term memory file if missing
+      const shortTermDir = path.join(memoryDir, "central", "short-term");
+      const projectMemFile = path.join(shortTermDir, `${setup.projectName}.md`);
+      if (!fs.existsSync(projectMemFile)) {
+        if (!fs.existsSync(shortTermDir)) fs.mkdirSync(shortTermDir, { recursive: true });
+        fs.writeFileSync(projectMemFile, `# ${setup.projectName} — Short-Term Memory\n\n_No entries yet._\n`);
+        ok(`Created ${projectMemFile}`);
+      }
+
+      // Create cards directory if missing
+      const cardsDir = path.join(memoryDir, "archive", "v2", "cards");
+      if (!fs.existsSync(cardsDir)) {
+        fs.mkdirSync(cardsDir, { recursive: true });
+        ok("Created cards directory");
+      }
     }
 
     setup.memoryDir = memoryDir;
@@ -403,7 +491,7 @@ function cmdStart() {
 
   log("Starting QuadWork backend...");
   const server = spawn("node", [serverDir], {
-    stdio: "inherit",
+    stdio: "ignore",
     detached: true,
     env: { ...process.env },
   });
@@ -414,29 +502,62 @@ function cmdStart() {
   const pidFile = path.join(CONFIG_DIR, "server.pid");
   fs.writeFileSync(pidFile, String(server.pid));
 
-  const port = config.port || 3001;
-  log(`Dashboard: http://localhost:${port === 3001 ? 3000 : port}`);
+  // Start AgentChattr if config.toml exists for first project
+  const firstProject = config.projects[0];
+  if (firstProject) {
+    const configToml = path.join(firstProject.working_dir, "config.toml");
+    if (fs.existsSync(configToml)) {
+      const acProc = spawn("agentchattr", ["--config", configToml], {
+        stdio: "ignore",
+        detached: true,
+      });
+      acProc.unref();
+      if (acProc.pid) {
+        ok(`AgentChattr started (PID: ${acProc.pid})`);
+        fs.writeFileSync(path.join(CONFIG_DIR, "agentchattr.pid"), String(acProc.pid));
+      }
+    }
+  }
+
+  // Open dashboard in browser
+  const dashboardUrl = "http://localhost:3000";
+  const openCmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+  setTimeout(() => {
+    try { execSync(`${openCmd} ${dashboardUrl}`, { stdio: "ignore" }); } catch {}
+  }, 1500);
+
+  log(`Dashboard: ${dashboardUrl}`);
   log("");
 }
 
 // ─── Stop Command ───────────────────────────────────────────────────────────
 
-function cmdStop() {
-  console.log("\n  QuadWork Stop\n");
-
-  const pidFile = path.join(CONFIG_DIR, "server.pid");
+function stopPid(name, pidFileName) {
+  const pidFile = path.join(CONFIG_DIR, pidFileName);
   if (fs.existsSync(pidFile)) {
     const pid = parseInt(fs.readFileSync(pidFile, "utf-8").trim(), 10);
     try {
       process.kill(pid, "SIGTERM");
-      ok(`Stopped server (PID: ${pid})`);
+      ok(`Stopped ${name} (PID: ${pid})`);
     } catch {
-      warn(`Server process ${pid} not running`);
+      warn(`${name} process ${pid} not running`);
     }
     fs.unlinkSync(pidFile);
-  } else {
-    warn("No server PID file found");
+    return true;
   }
+  return false;
+}
+
+function cmdStop() {
+  console.log("\n  QuadWork Stop\n");
+
+  let stopped = 0;
+  if (stopPid("Telegram bridge", "telegram-bridge.pid")) stopped++;
+  if (stopPid("AgentChattr", "agentchattr.pid")) stopped++;
+  if (stopPid("Backend server", "server.pid")) stopped++;
+
+  if (stopped === 0) warn("No running processes found");
+  else ok(`Stopped ${stopped} process(es)`);
   log("");
 }
 
