@@ -148,8 +148,13 @@ export default function QueueManager({ projectId }: QueueManagerProps) {
         body: JSON.stringify({ text: prompt + "\n" }),
       });
 
-      // If no session exists, create one by opening a WebSocket connection
+      // If no session exists, create one and start the T1 agent
       if (res.status === 404) {
+        // Get T1 agent command from config
+        const project = cfg.projects?.find((p: { id: string }) => p.id === projectId);
+        const t1Command = project?.agents?.t1?.command || "claude";
+
+        // Open WebSocket to create PTY session
         const wsUrl = `ws://127.0.0.1:${port}/ws/terminal?project=${encodeURIComponent(projectId)}&agent=t1`;
         const ws = new WebSocket(wsUrl);
         await new Promise<void>((resolve, reject) => {
@@ -158,10 +163,20 @@ export default function QueueManager({ projectId }: QueueManagerProps) {
           setTimeout(() => reject(new Error("WebSocket timeout")), 5000);
         });
 
-        // Wait for PTY to initialize
-        await new Promise((r) => setTimeout(r, 1000));
+        // Wait for shell to initialize
+        await new Promise((r) => setTimeout(r, 500));
 
-        // Retry write
+        // Start the T1 agent CLI in the PTY shell
+        await fetch(`${backendUrl}/api/agents/${projectId}/t1/write`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: `${t1Command}\n` }),
+        });
+
+        // Wait for agent to initialize
+        await new Promise((r) => setTimeout(r, 3000));
+
+        // Now write the queue prompt to the running agent
         res = await fetch(`${backendUrl}/api/agents/${projectId}/t1/write`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
