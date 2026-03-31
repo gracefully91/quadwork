@@ -144,15 +144,26 @@ export async function GET() {
   });
 
   // Build activity feed from chat with correct agent identities
-  const recentEvents = workflowMsgs.map((m) => {
-    // Try direct repo/name match first
+  // Attribution: repo/name match → PR/issue number → branch task/N pattern → single-project fallback
+  // Only include events that can be attributed to a project
+  const recentEvents: { time: string; text: string; actor: string; projectName: string }[] = [];
+
+  for (const m of workflowMsgs) {
     let projectName = cfg.projects.find((p) => m.text.includes(p.repo) || m.text.includes(p.name))?.name;
 
-    // Try PR number cross-reference: match "#N" or "PR #N" or "#N "
+    // Try PR/issue number cross-reference
     if (!projectName) {
-      const prMatch = m.text.match(/#(\d+)/);
-      if (prMatch) {
-        projectName = prToProject[parseInt(prMatch[1], 10)];
+      const numMatch = m.text.match(/#(\d+)/);
+      if (numMatch) {
+        projectName = prToProject[parseInt(numMatch[1], 10)];
+      }
+    }
+
+    // Try branch name pattern: task/N-slug → extract issue number
+    if (!projectName) {
+      const branchMatch = m.text.match(/task\/(\d+)/);
+      if (branchMatch) {
+        projectName = prToProject[parseInt(branchMatch[1], 10)];
       }
     }
 
@@ -161,13 +172,18 @@ export async function GET() {
       projectName = cfg.projects[0].name;
     }
 
-    return {
-      time: m.time,
-      text: m.text.length > 120 ? m.text.slice(0, 120) + "…" : m.text,
-      actor: m.sender,
-      projectName: projectName || "",
-    };
-  });
+    // Only include attributed events
+    if (projectName) {
+      recentEvents.push({
+        time: m.time,
+        text: m.text.length > 120 ? m.text.slice(0, 120) + "…" : m.text,
+        actor: m.sender,
+        projectName,
+      });
+    }
+
+    if (recentEvents.length >= 10) break;
+  }
 
   return NextResponse.json({ projects: projectResults, recentEvents });
 }
