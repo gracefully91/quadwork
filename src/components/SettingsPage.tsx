@@ -25,6 +25,9 @@ interface ProjectConfig {
   working_dir: string;
   agents: Record<string, AgentConfig>;
   telegram?: TelegramConfig;
+  trigger_enabled?: boolean;
+  trigger_interval?: number;
+  trigger_message?: string;
 }
 
 interface Config {
@@ -354,6 +357,46 @@ export default function SettingsPage() {
                           )}
                         </div>
                       ))}
+                    </div>
+                  </div>
+
+                  {/* Scheduled Trigger */}
+                  <div className="mt-4">
+                    <h3 className="text-[10px] text-text-muted uppercase tracking-wider mb-2">Scheduled Trigger</h3>
+                    <div className="border border-border p-3">
+                      <div className="flex items-center gap-3 mb-3">
+                        <button
+                          onClick={() => updateProject(idx, { trigger_enabled: !project.trigger_enabled } as Partial<ProjectConfig>)}
+                          className={`w-8 h-4 rounded-full transition-colors relative ${
+                            project.trigger_enabled ? "bg-accent" : "bg-border"
+                          }`}
+                        >
+                          <span
+                            className={`absolute top-0.5 w-3 h-3 rounded-full bg-text transition-transform ${
+                              project.trigger_enabled ? "left-4" : "left-0.5"
+                            }`}
+                          />
+                        </button>
+                        <span className="text-[11px] text-text">{project.trigger_enabled ? "Enabled" : "Disabled"}</span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                        <Input
+                          label="Interval (minutes)"
+                          value={String(project.trigger_interval || 30)}
+                          onChange={(v) => updateProject(idx, { trigger_interval: parseInt(v, 10) || 30 } as Partial<ProjectConfig>)}
+                          type="number"
+                        />
+                        <div className="flex flex-col gap-1">
+                          <label className="text-[11px] text-text-muted uppercase tracking-wider">Message Template</label>
+                          <textarea
+                            value={project.trigger_message || ""}
+                            onChange={(e) => updateProject(idx, { trigger_message: e.target.value } as Partial<ProjectConfig>)}
+                            placeholder="@t1 @t2a @t2b @t3 — Queue check..."
+                            rows={4}
+                            className="bg-transparent border border-border px-2 py-1.5 text-[11px] text-text outline-none focus:border-accent resize-y"
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
 

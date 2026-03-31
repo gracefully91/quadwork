@@ -19,6 +19,11 @@ export async function PUT(req: Request) {
       fs.mkdirSync(dir, { recursive: true });
     }
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(body, null, 2));
+
+    // Notify backend to sync triggers from updated config
+    const port = body.port || 3001;
+    fetch(`http://127.0.0.1:${port}/api/triggers/sync`, { method: "POST" }).catch(() => {});
+
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     return NextResponse.json(
