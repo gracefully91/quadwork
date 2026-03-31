@@ -120,16 +120,20 @@ export async function GET() {
     .slice(-10)
     .reverse();
 
-  // Build PR-number-to-project mapping for activity attribution
-  const prToProject: Record<number, string> = {};
+  // Build number-to-project mapping for activity attribution (issues + PRs share namespace)
+  const numberToProject: Record<number, string> = {};
   const projectResults = cfg.projects.map((p: ProjectConfig) => {
     const data = getProjectData(p.repo, p.agents);
     const hasAgents = p.agents && Object.keys(p.agents).length > 0;
 
-    // Map PR numbers to this project
     if (REPO_RE.test(p.repo)) {
+      // Map PR numbers to this project
       const allPrs = ghJson(["pr", "list", "-R", p.repo, "--state", "all", "--json", "number", "--limit", "100"]) as { number: number }[];
-      for (const pr of allPrs) prToProject[pr.number] = p.name;
+      for (const pr of allPrs) numberToProject[pr.number] = p.name;
+
+      // Map issue numbers to this project (branch task/N uses issue numbers)
+      const allIssues = ghJson(["issue", "list", "-R", p.repo, "--state", "all", "--json", "number", "--limit", "100"]) as { number: number }[];
+      for (const issue of allIssues) numberToProject[issue.number] = p.name;
     }
 
     return {
@@ -155,7 +159,7 @@ export async function GET() {
     if (!projectName) {
       const numMatch = m.text.match(/#(\d+)/);
       if (numMatch) {
-        projectName = prToProject[parseInt(numMatch[1], 10)];
+        projectName = numberToProject[parseInt(numMatch[1], 10)];
       }
     }
 
@@ -163,7 +167,7 @@ export async function GET() {
     if (!projectName) {
       const branchMatch = m.text.match(/task\/(\d+)/);
       if (branchMatch) {
-        projectName = prToProject[parseInt(branchMatch[1], 10)];
+        projectName = numberToProject[parseInt(branchMatch[1], 10)];
       }
     }
 
