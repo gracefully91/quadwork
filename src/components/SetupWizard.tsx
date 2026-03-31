@@ -63,7 +63,7 @@ export default function SetupWizard() {
     }
   };
 
-  const apiCall = async (step: string, body: Record<string, string>) => {
+  const apiCall = async (step: string, body: Record<string, unknown>) => {
     setLoading(true);
     try {
       const res = await fetch(`/api/setup?step=${step}`, {
