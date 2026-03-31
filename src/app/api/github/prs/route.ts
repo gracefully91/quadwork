@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
   try {
     const out = execFileSync(
       "gh",
-      ["pr", "list", "-R", repo, "--json", "number,title,state,author,assignees,reviews,statusCheckRollup,url,createdAt", "--limit", "50"],
+      ["pr", "list", "-R", repo, "--json", "number,title,state,author,assignees,reviewDecision,reviews,statusCheckRollup,url,createdAt", "--limit", "50"],
       { encoding: "utf-8", timeout: 15000 }
     );
     return NextResponse.json(JSON.parse(out));

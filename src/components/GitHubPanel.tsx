@@ -21,6 +21,7 @@ interface PR {
   state: string;
   author: { login: string };
   assignees: { login: string }[];
+  reviewDecision: string;
   reviews: Review[];
   statusCheckRollup: { state: string }[];
   url: string;
@@ -134,18 +135,10 @@ export default function GitHubPanel({ projectId }: GitHubPanelProps) {
         <div className="px-3 py-2 text-[11px] text-text-muted">No PRs</div>
       )}
       {prs.map((pr) => {
-        // Extract latest review state per reviewer
-        const reviewerStates: Record<string, string> = {};
-        (pr.reviews || []).forEach((r: Review) => {
-          if (r.author?.login) reviewerStates[r.author.login] = r.state;
-        });
-        // Compute overall review status from individual reviews
-        const reviewValues = Object.values(reviewerStates);
-        const overallReview = reviewValues.some((s) => s === "CHANGES_REQUESTED")
-          ? "CHANGES_REQUESTED"
-          : reviewValues.every((s) => s === "APPROVED") && reviewValues.length > 0
-            ? "APPROVED"
-            : "REVIEW_REQUIRED";
+        const reviews = pr.reviews || [];
+        const approvals = reviews.filter((r) => r.state === "APPROVED").length;
+        const changes = reviews.filter((r) => r.state === "CHANGES_REQUESTED").length;
+        const decision = pr.reviewDecision || "REVIEW_REQUIRED";
 
         return (
           <a
@@ -155,7 +148,7 @@ export default function GitHubPanel({ projectId }: GitHubPanelProps) {
             rel="noopener noreferrer"
             className="flex items-center gap-2 px-3 py-1 hover:bg-[#1a1a1a] transition-colors cursor-pointer border-b border-border/50"
           >
-            <StatusDot color={reviewColor(overallReview)} />
+            <StatusDot color={reviewColor(decision)} />
             <span className="text-[11px] text-text-muted w-8 shrink-0">#{pr.number}</span>
             <span className="text-[11px] text-text truncate flex-1 min-w-0">{pr.title}</span>
             {pr.assignees?.[0] && (
@@ -163,18 +156,14 @@ export default function GitHubPanel({ projectId }: GitHubPanelProps) {
                 {pr.assignees[0].login}
               </span>
             )}
-            {/* Per-reviewer status */}
-            {Object.entries(reviewerStates).map(([login, state]) => (
-              <span
-                key={login}
-                className={`text-[10px] shrink-0 ${reviewColor(state).replace("bg-", "text-")}`}
-              >
-                {login.replace(/^.*-/, "")}:{reviewLabel(state)}
-              </span>
-            ))}
-            {Object.keys(reviewerStates).length === 0 && (
-              <span className="text-[10px] text-[#ffcc00] shrink-0">rev</span>
-            )}
+            {/* Review summary: approvals / changes requested */}
+            <span className={`text-[10px] shrink-0 ${reviewColor(decision).replace("bg-", "text-")}`}>
+              {changes > 0
+                ? `${changes}chg`
+                : approvals > 0
+                  ? `${approvals}ok`
+                  : "rev"}
+            </span>
             <span className={`text-[10px] shrink-0 ${ciColor(pr.statusCheckRollup)}`}>
               {ciLabel(pr.statusCheckRollup)}
             </span>
