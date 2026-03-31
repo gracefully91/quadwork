@@ -55,7 +55,6 @@ wss.on("connection", (ws, req) => {
   }
 
   const sessionKey = `${projectId}/${agentId}`;
-  activeSessions.set(sessionKey, { projectId, agentId });
 
   let term;
   try {
@@ -71,6 +70,9 @@ wss.on("connection", (ws, req) => {
     ws.close(1011, "pty-spawn-failed");
     return;
   }
+
+  // Register session only after successful PTY spawn
+  activeSessions.set(sessionKey, { projectId, agentId });
 
   // PTY → client
   term.onData((data) => {

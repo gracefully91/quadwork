@@ -142,7 +142,9 @@ export async function GET() {
     text: m.text.length > 120 ? m.text.slice(0, 120) + "…" : m.text,
     actor: m.sender,
     // Match project by repo or name mention in message text
-    projectName: cfg.projects.find((p) => m.text.includes(p.repo) || m.text.includes(p.name))?.name || "",
+    // If only one project configured, attribute all workflow messages to it
+    projectName: cfg.projects.find((p) => m.text.includes(p.repo) || m.text.includes(p.name))?.name
+      || (cfg.projects.length === 1 ? cfg.projects[0].name : "general"),
   }));
 
   return NextResponse.json({ projects, recentEvents });
