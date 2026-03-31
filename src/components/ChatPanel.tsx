@@ -26,8 +26,53 @@ function senderColor(sender: string): string {
   return SENDER_COLORS[sender.toLowerCase()] || "#e0e0e0";
 }
 
+/**
+ * Tries iframe first (uses AgentChattr's own session auth).
+ * Falls back to API polling if iframe fails to load.
+ */
 export default function ChatPanel() {
-  const [channels, setChannels] = useState<string[]>([]);
+  const [mode, setMode] = useState<"iframe" | "api" | "loading">("loading");
+  const [chattrUrl, setChattrUrl] = useState("");
+
+  // Resolve AgentChattr URL from config
+  useEffect(() => {
+    fetch("/api/config")
+      .then((r) => {
+        if (!r.ok) throw new Error("config fetch failed");
+        return r.json();
+      })
+      .then((cfg) => setChattrUrl(cfg.agentchattr_url || "http://127.0.0.1:8300"))
+      .catch(() => setChattrUrl("http://127.0.0.1:8300"));
+  }, []);
+
+  if (!chattrUrl) return null;
+
+  if (mode === "loading" || mode === "iframe") {
+    return (
+      <div className="w-full h-full">
+        <iframe
+          src={chattrUrl}
+          className="w-full h-full border-0"
+          onLoad={() => setMode("iframe")}
+          onError={() => setMode("api")}
+          style={{ display: mode === "loading" ? "none" : "block" }}
+          sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
+        />
+        {mode === "loading" && (
+          <div className="w-full h-full flex items-center justify-center">
+            <span className="text-xs text-text-muted">Connecting to AgentChattr...</span>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return <ChatPanelAPI />;
+}
+
+/** API-driven fallback when iframe is blocked */
+function ChatPanelAPI() {
+  const [channels, setChannels] = useState<string[]>(["general"]);
   const [channel, setChannel] = useState("general");
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -218,7 +263,7 @@ export default function ChatPanel() {
             }
             if (e.key === "Escape") setShowMentions(false);
           }}
-          placeholder="Message #general..."
+          placeholder={`Message #${channel}...`}
           className="w-full bg-transparent px-3 py-2 text-[12px] text-text placeholder:text-text-muted outline-none focus:ring-1 focus:ring-accent"
         />
       </div>
