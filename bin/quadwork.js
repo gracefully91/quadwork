@@ -487,6 +487,19 @@ function cmdStart() {
 
   const quadworkDir = path.join(__dirname, "..");
 
+  // Build Next.js if no production build exists
+  const nextBuildDir = path.join(quadworkDir, ".next");
+  if (!fs.existsSync(nextBuildDir)) {
+    log("Building Next.js frontend (first run)...");
+    try {
+      execSync("npm run build", { cwd: quadworkDir, stdio: "inherit" });
+      ok("Build complete");
+    } catch {
+      fail("Next.js build failed — fix build errors and retry");
+      process.exit(1);
+    }
+  }
+
   // Start Next.js frontend
   log("Starting Next.js frontend...");
   const frontend = spawn("npx", ["next", "start"], {
