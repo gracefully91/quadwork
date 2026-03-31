@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface Project {
   id: string;
@@ -61,6 +61,43 @@ function PlusIcon() {
   );
 }
 
+function ProjectIcon({ project, isActive }: { project: Project; isActive: boolean }) {
+  const [tooltip, setTooltip] = useState<{ top: number } | null>(null);
+  const ref = useRef<HTMLAnchorElement>(null);
+
+  return (
+    <>
+      <Link
+        ref={ref}
+        href={`/project/${project.id}`}
+        onMouseEnter={() => {
+          const rect = ref.current?.getBoundingClientRect();
+          if (rect) setTooltip({ top: rect.top + rect.height / 2 });
+        }}
+        onMouseLeave={() => setTooltip(null)}
+      >
+        <div
+          className={`w-10 h-10 flex items-center justify-center rounded-full text-xs font-semibold uppercase transition-colors ${
+            isActive
+              ? "border-2 border-accent text-accent"
+              : "border border-border text-text-muted hover:text-text hover:bg-[#1a1a1a]"
+          }`}
+        >
+          {project.name.charAt(0)}
+        </div>
+      </Link>
+      {tooltip && (
+        <div
+          className="fixed px-2 py-1 bg-bg-surface border border-border text-text text-xs whitespace-nowrap pointer-events-none z-50"
+          style={{ left: 72, top: tooltip.top, transform: "translateY(-50%)" }}
+        >
+          {project.name}
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function Sidebar() {
   const pathname = usePathname();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -101,26 +138,11 @@ export default function Sidebar() {
         {projects.map((project) => {
           const isActive = activeProjectId === project.id;
           return (
-            <Link
+            <ProjectIcon
               key={project.id}
-              href={`/project/${project.id}`}
-              className="relative group"
-              title={project.name}
-            >
-              <div
-                className={`w-10 h-10 flex items-center justify-center rounded-full text-xs font-semibold uppercase transition-colors ${
-                  isActive
-                    ? "border-2 border-accent text-accent"
-                    : "border border-border text-text-muted hover:text-text hover:bg-[#1a1a1a]"
-                }`}
-              >
-                {project.name.charAt(0)}
-              </div>
-              {/* Tooltip */}
-              <div className="absolute left-14 top-1/2 -translate-y-1/2 px-2 py-1 bg-bg-surface border border-border text-text text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
-                {project.name}
-              </div>
-            </Link>
+              project={project}
+              isActive={isActive}
+            />
           );
         })}
 

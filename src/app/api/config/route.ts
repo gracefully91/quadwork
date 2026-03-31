@@ -19,6 +19,9 @@ export async function GET() {
     if (err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "ENOENT") {
       return NextResponse.json(DEFAULT_CONFIG);
     }
-    return NextResponse.json(DEFAULT_CONFIG);
+    return NextResponse.json(
+      { error: "Failed to read config", detail: err instanceof Error ? err.message : String(err) },
+      { status: 500 }
+    );
   }
 }
