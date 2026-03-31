@@ -15,7 +15,7 @@ interface TerminalPanelProps {
 export default function TerminalPanel({
   projectId,
   agentId,
-  wsUrl = "ws://localhost:3001",
+  wsUrl,
 }: TerminalPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
@@ -89,44 +89,64 @@ export default function TerminalPanel({
     // Initial fit
     requestAnimationFrame(() => fit());
 
-    // Connect WebSocket
-    const endpoint = `${wsUrl}/ws/terminal?project=${encodeURIComponent(projectId)}&agent=${encodeURIComponent(agentId)}`;
-    const ws = new WebSocket(endpoint);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      // Send initial dimensions
-      ws.send(
-        JSON.stringify({
-          type: "resize",
-          cols: term.cols,
-          rows: term.rows,
-        })
-      );
-    };
-
-    ws.onmessage = (e) => {
-      term.write(e.data);
-    };
-
-    ws.onclose = (e) => {
-      term.write(`\r\n\x1b[38;2;115;115;115m[session closed: ${e.reason || e.code}]\x1b[0m\r\n`);
-    };
-
-    // Terminal input → WebSocket
-    term.onData((data) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(data);
-      }
-    });
-
     // Resize observer
     const observer = new ResizeObserver(() => fit());
     observer.observe(containerRef.current);
 
+    // Connect WebSocket — resolve backend URL from config if not provided
+    let cancelled = false;
+
+    (async () => {
+      let base = wsUrl;
+      if (!base) {
+        try {
+          const res = await fetch("/api/config");
+          if (res.ok) {
+            const cfg = await res.json();
+            const port = cfg.port || 3001;
+            base = `ws://${window.location.hostname}:${port}`;
+          } else {
+            base = `ws://${window.location.hostname}:3001`;
+          }
+        } catch {
+          base = `ws://${window.location.hostname}:3001`;
+        }
+      }
+      if (cancelled) return;
+
+      const endpoint = `${base}/ws/terminal?project=${encodeURIComponent(projectId)}&agent=${encodeURIComponent(agentId)}`;
+      const ws = new WebSocket(endpoint);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        ws.send(
+          JSON.stringify({
+            type: "resize",
+            cols: term.cols,
+            rows: term.rows,
+          })
+        );
+      };
+
+      ws.onmessage = (e) => {
+        term.write(e.data);
+      };
+
+      ws.onclose = (e) => {
+        term.write(`\r\n\x1b[38;2;115;115;115m[session closed: ${e.reason || e.code}]\x1b[0m\r\n`);
+      };
+
+      term.onData((data) => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(data);
+        }
+      });
+    })();
+
     return () => {
+      cancelled = true;
       observer.disconnect();
-      ws.close();
+      wsRef.current?.close();
       term.dispose();
       termRef.current = null;
       fitRef.current = null;
