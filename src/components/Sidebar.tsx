@@ -108,7 +108,7 @@ export default function Sidebar() {
         if (!r.ok) throw new Error(`Config fetch failed: ${r.status}`);
         return r.json();
       })
-      .then((cfg) => setProjects(cfg.projects || []))
+      .then((cfg) => setProjects((cfg.projects || []).filter((p: Project & { archived?: boolean }) => !p.archived)))
       .catch((err) => console.error(err.message));
   }, []);
 

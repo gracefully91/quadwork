@@ -28,6 +28,7 @@ interface ProjectConfig {
   trigger_enabled?: boolean;
   trigger_interval?: number;
   trigger_message?: string;
+  archived?: boolean;
 }
 
 interface Config {
@@ -203,6 +204,48 @@ export default function SettingsPage() {
     setExpanded({ ...expanded, [id]: true });
   };
 
+  const renameProject = (idx: number, newName: string) => {
+    if (!config) return;
+    const project = config.projects[idx];
+    const oldName = project.name;
+    if (oldName === newName) return;
+
+    // Propagate rename via API
+    fetch("/api/rename", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "project", projectId: project.id, oldName, newName }),
+    }).catch(() => {});
+
+    updateProject(idx, { name: newName });
+  };
+
+  const renameAgent = (projectIdx: number, agentId: string, newName: string) => {
+    if (!config) return;
+    const project = config.projects[projectIdx];
+    const agent = project.agents?.[agentId];
+    const oldName = agent?.display_name || agentId.toUpperCase();
+    if (oldName === newName) return;
+
+    fetch("/api/rename", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "agent", projectId: project.id, agentId, oldName, newName }),
+    }).catch(() => {});
+
+    updateAgent(projectIdx, agentId, { display_name: newName });
+  };
+
+  const archiveProject = (idx: number) => {
+    if (!config) return;
+    updateProject(idx, { archived: true });
+  };
+
+  const restoreProject = (idx: number) => {
+    if (!config) return;
+    updateProject(idx, { archived: false });
+  };
+
   const removeProject = (idx: number) => {
     if (!config) return;
     const projects = config.projects.filter((_, i) => i !== idx);
@@ -278,7 +321,7 @@ export default function SettingsPage() {
                     <Input
                       label="Project Name"
                       value={project.name}
-                      onChange={(v) => updateProject(idx, { name: v })}
+                      onChange={(v) => renameProject(idx, v)}
                     />
                     <Input
                       label="GitHub Repo"
@@ -308,11 +351,16 @@ export default function SettingsPage() {
                       {Object.entries(project.agents || {}).map(([agentId, agent]) => (
                         <div key={agentId} className="border-b border-border/50 last:border-b-0">
                           <div className="grid grid-cols-5 gap-0 px-2 py-1">
-                            <input
-                              value={agent.display_name || agentId.toUpperCase()}
-                              onChange={(e) => updateAgent(idx, agentId, { display_name: e.target.value })}
-                              className="bg-transparent text-[11px] text-text font-semibold outline-none border border-border px-1 py-0.5 focus:border-accent"
-                            />
+                            <div className="flex flex-col gap-0.5">
+                              <input
+                                value={agent.display_name || agentId.toUpperCase()}
+                                onChange={(e) => renameAgent(idx, agentId, e.target.value)}
+                                className="bg-transparent text-[11px] text-text font-semibold outline-none border border-border px-1 py-0.5 focus:border-accent"
+                              />
+                              <span className="text-[9px] text-text-muted px-1">
+                                {agentId === "t1" ? "Owner" : agentId.startsWith("t2") ? "Reviewer" : "Builder"}
+                              </span>
+                            </div>
                             <select
                               value={agent.command || "claude"}
                               onChange={(e) => updateAgent(idx, agentId, { command: e.target.value })}
@@ -494,10 +542,25 @@ export default function SettingsPage() {
                   </div>
 
                   {/* Remove project */}
-                  <div className="mt-4 flex justify-end">
+                  <div className="mt-4 flex justify-end gap-3">
+                    {project.archived ? (
+                      <button
+                        onClick={() => restoreProject(idx)}
+                        className="text-[11px] text-accent hover:underline"
+                      >
+                        Restore Project
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => archiveProject(idx)}
+                        className="text-[11px] text-text-muted hover:text-text transition-colors"
+                      >
+                        Archive
+                      </button>
+                    )}
                     {confirmDelete === project.id ? (
                       <div className="flex items-center gap-2">
-                        <span className="text-[11px] text-error">Remove this project?</span>
+                        <span className="text-[11px] text-error">Remove?</span>
                         <button
                           onClick={() => removeProject(idx)}
                           className="px-2 py-1 text-[11px] bg-error text-bg font-semibold"
@@ -516,7 +579,7 @@ export default function SettingsPage() {
                         onClick={() => setConfirmDelete(project.id)}
                         className="text-[11px] text-error hover:text-text transition-colors"
                       >
-                        Remove Project
+                        Remove
                       </button>
                     )}
                   </div>
