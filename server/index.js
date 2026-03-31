@@ -2,7 +2,7 @@ const express = require("express");
 const http = require("http");
 const { WebSocketServer } = require("ws");
 const pty = require("node-pty");
-const { readConfig } = require("./config");
+const { readConfig, resolveAgentCwd } = require("./config");
 
 const config = readConfig();
 const PORT = config.port || 3001;
@@ -27,8 +27,20 @@ const wss = new WebSocketServer({ server, path: "/ws/terminal" });
 
 wss.on("connection", (ws, req) => {
   const params = new URL(req.url, `http://localhost:${PORT}`).searchParams;
-  const cwd = params.get("cwd") || process.env.HOME || "/";
+  const projectId = params.get("project");
+  const agentId = params.get("agent");
   const shell = process.env.SHELL || "/bin/zsh";
+
+  if (!projectId || !agentId) {
+    ws.close(1008, "missing project or agent query params");
+    return;
+  }
+
+  const cwd = resolveAgentCwd(projectId, agentId);
+  if (!cwd) {
+    ws.close(1008, `unknown project/agent: ${projectId}/${agentId}`);
+    return;
+  }
 
   let term;
   try {
