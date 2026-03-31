@@ -13,6 +13,7 @@ interface Issue {
 interface Review {
   author: { login: string };
   state: string;
+  body: string;
 }
 
 interface PR {
@@ -136,9 +137,19 @@ export default function GitHubPanel({ projectId }: GitHubPanelProps) {
       )}
       {prs.map((pr) => {
         const reviews = pr.reviews || [];
-        const approvals = reviews.filter((r) => r.state === "APPROVED").length;
-        const changes = reviews.filter((r) => r.state === "CHANGES_REQUESTED").length;
         const decision = pr.reviewDecision || "REVIEW_REQUIRED";
+
+        // Extract per-agent review status from body text
+        // Reviews start with "T2a" or "T2b", or contain "## Verdict:" (T2a format)
+        const agentStatus: Record<string, string> = {};
+        for (const r of reviews) {
+          const body = (r.body || "").trim();
+          if (/^T2b\b/i.test(body)) {
+            agentStatus["t2b"] = r.state;
+          } else if (/^T2a\b/i.test(body) || /^##\s*Verdict/i.test(body)) {
+            agentStatus["t2a"] = r.state;
+          }
+        }
 
         return (
           <a
@@ -156,14 +167,22 @@ export default function GitHubPanel({ projectId }: GitHubPanelProps) {
                 {pr.assignees[0].login}
               </span>
             )}
-            {/* Review summary: approvals / changes requested */}
-            <span className={`text-[10px] shrink-0 ${reviewColor(decision).replace("bg-", "text-")}`}>
-              {changes > 0
-                ? `${changes}chg`
-                : approvals > 0
-                  ? `${approvals}ok`
-                  : "rev"}
-            </span>
+            {/* Per-agent review slots */}
+            {["t2a", "t2b"].map((agent) => {
+              const state = agentStatus[agent];
+              return (
+                <span
+                  key={agent}
+                  className={`text-[10px] shrink-0 ${
+                    state
+                      ? reviewColor(state).replace("bg-", "text-")
+                      : "text-text-muted"
+                  }`}
+                >
+                  {agent}:{state ? reviewLabel(state) : "—"}
+                </span>
+              );
+            })}
             <span className={`text-[10px] shrink-0 ${ciColor(pr.statusCheckRollup)}`}>
               {ciLabel(pr.statusCheckRollup)}
             </span>
