@@ -19,6 +19,18 @@ function writeConfig(cfg: unknown) {
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
 }
 
+function replaceInFile(filePath: string, oldStr: string, newStr: string): boolean {
+  try {
+    if (!fs.existsSync(filePath)) return false;
+    const content = fs.readFileSync(filePath, "utf-8");
+    if (!content.includes(oldStr)) return false;
+    fs.writeFileSync(filePath, content.replaceAll(oldStr, newStr));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // POST /api/rename — propagate name changes
 export async function POST(req: NextRequest) {
   const { type, projectId, oldName, newName, agentId } = await req.json();
@@ -27,16 +39,21 @@ export async function POST(req: NextRequest) {
   if (!project) return NextResponse.json({ error: "Project not found" }, { status: 404 });
 
   const changes: string[] = [];
+  const workDir = project.working_dir || "";
 
   if (type === "project") {
-    // Update project name in config
     project.name = newName;
     changes.push("config.json");
 
-    // Update trigger message if it references old name
     if (project.trigger_message && project.trigger_message.includes(oldName)) {
       project.trigger_message = project.trigger_message.replaceAll(oldName, newName);
       changes.push("trigger_message");
+    }
+
+    // Propagate to CLAUDE.md in working directory
+    if (workDir) {
+      const claudeMd = path.join(workDir, "CLAUDE.md");
+      if (replaceInFile(claudeMd, oldName, newName)) changes.push("CLAUDE.md");
     }
   }
 
@@ -47,7 +64,7 @@ export async function POST(req: NextRequest) {
       agent.display_name = newName;
       changes.push("config.json");
 
-      // Update AGENTS.md seed if it references old display name
+      // Update AGENTS.md seed
       if (agent.agents_md && agent.agents_md.includes(oldDisplayName)) {
         agent.agents_md = agent.agents_md.replaceAll(oldDisplayName, newName);
         changes.push("agents_md");
@@ -55,13 +72,28 @@ export async function POST(req: NextRequest) {
 
       // Update trigger message @mentions
       if (project.trigger_message) {
-        // Replace @oldName with @newName in trigger message
         const oldMention = `@${oldDisplayName.toLowerCase()}`;
         const newMention = `@${newName.toLowerCase()}`;
         if (project.trigger_message.includes(oldMention)) {
           project.trigger_message = project.trigger_message.replaceAll(oldMention, newMention);
           changes.push("trigger_message");
         }
+      }
+
+      // Propagate to AgentChattr config.toml
+      const tomlPath = path.join(os.homedir(), ".quadwork", `telegram-${projectId}.toml`);
+      if (replaceInFile(tomlPath, oldDisplayName, newName)) changes.push("config.toml");
+
+      // Propagate to CLAUDE.md in working directory
+      if (workDir) {
+        const claudeMd = path.join(workDir, "CLAUDE.md");
+        if (replaceInFile(claudeMd, oldDisplayName, newName)) changes.push("CLAUDE.md");
+      }
+
+      // Propagate to AGENTS.md files in agent worktree cwds
+      if (agent.cwd) {
+        const agentsMd = path.join(agent.cwd, "AGENTS.md");
+        if (replaceInFile(agentsMd, oldDisplayName, newName)) changes.push("AGENTS.md");
       }
     }
   }

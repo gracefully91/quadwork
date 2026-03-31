@@ -210,14 +210,14 @@ export default function SettingsPage() {
     const oldName = project.name;
     if (oldName === newName) return;
 
-    // Propagate rename via API
+    // Propagate rename via API, then reload config to get server-side changes
     fetch("/api/rename", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type: "project", projectId: project.id, oldName, newName }),
-    }).catch(() => {});
-
-    updateProject(idx, { name: newName });
+    })
+      .then(() => load())
+      .catch(() => {});
   };
 
   const renameAgent = (projectIdx: number, agentId: string, newName: string) => {
@@ -231,9 +231,9 @@ export default function SettingsPage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type: "agent", projectId: project.id, agentId, oldName, newName }),
-    }).catch(() => {});
-
-    updateAgent(projectIdx, agentId, { display_name: newName });
+    })
+      .then(() => load())
+      .catch(() => {});
   };
 
   const archiveProject = (idx: number) => {
@@ -297,9 +297,10 @@ export default function SettingsPage() {
 
       {/* Per-project settings */}
       <section className="mb-6">
-        <h2 className="text-[11px] text-text-muted uppercase tracking-wider mb-3">Projects</h2>
+        <h2 className="text-[11px] text-text-muted uppercase tracking-wider mb-3">Active Projects</h2>
 
-        {config.projects.map((project, idx) => {
+        {config.projects.filter((p) => !p.archived).map((project) => {
+          const idx = config.projects.indexOf(project);
           const isExpanded = expanded[project.id] ?? false;
           const telegram = project.telegram || { enabled: false, bot_token: "", chat_id: "" };
 
@@ -596,6 +597,44 @@ export default function SettingsPage() {
         >
           + Add Project
         </button>
+
+        {/* Archived projects */}
+        {config.projects.some((p) => p.archived) && (
+          <>
+            <hr className="border-border my-4" />
+            <h2 className="text-[11px] text-text-muted uppercase tracking-wider mb-3">Archived</h2>
+            {config.projects.filter((p) => p.archived).map((project) => {
+              const idx = config.projects.indexOf(project);
+              return (
+                <div key={project.id} className="border border-border mb-3 opacity-60">
+                  <div className="flex items-center justify-between px-3 py-2">
+                    <span className="text-[12px] text-text-muted">{project.name}</span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => restoreProject(idx)}
+                        className="text-[11px] text-accent hover:underline"
+                      >
+                        Restore
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (confirmDelete === project.id) {
+                            removeProject(idx);
+                          } else {
+                            setConfirmDelete(project.id);
+                          }
+                        }}
+                        className="text-[11px] text-error hover:underline"
+                      >
+                        {confirmDelete === project.id ? "Confirm Remove" : "Remove"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </>
+        )}
       </section>
 
       {/* Bottom save */}
