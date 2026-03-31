@@ -120,9 +120,17 @@ export async function GET() {
     .slice(-10)
     .reverse();
 
-  const projects = cfg.projects.map((p: ProjectConfig) => {
+  // Build PR-number-to-project mapping for activity attribution
+  const prToProject: Record<number, string> = {};
+  const projectResults = cfg.projects.map((p: ProjectConfig) => {
     const data = getProjectData(p.repo, p.agents);
     const hasAgents = p.agents && Object.keys(p.agents).length > 0;
+
+    // Map PR numbers to this project
+    if (REPO_RE.test(p.repo)) {
+      const allPrs = ghJson(["pr", "list", "-R", p.repo, "--state", "all", "--json", "number", "--limit", "100"]) as { number: number }[];
+      for (const pr of allPrs) prToProject[pr.number] = p.name;
+    }
 
     return {
       id: p.id,
@@ -130,22 +138,36 @@ export async function GET() {
       repo: p.repo,
       agentCount: p.agents ? Object.keys(p.agents).length : 0,
       openPrs: data.openPrs,
-      // Active = backend has active PTY sessions for this specific project
       state: hasAgents ? isProjectActive(p.id) : "idle",
       lastActivity: data.lastActivity,
     };
   });
 
   // Build activity feed from chat with correct agent identities
-  const recentEvents = workflowMsgs.map((m) => ({
-    time: m.time,
-    text: m.text.length > 120 ? m.text.slice(0, 120) + "…" : m.text,
-    actor: m.sender,
-    // Match project by repo or name mention in message text
-    // If only one project configured, attribute all workflow messages to it
-    projectName: cfg.projects.find((p) => m.text.includes(p.repo) || m.text.includes(p.name))?.name
-      || (cfg.projects.length === 1 ? cfg.projects[0].name : "general"),
-  }));
+  const recentEvents = workflowMsgs.map((m) => {
+    // Try direct repo/name match first
+    let projectName = cfg.projects.find((p) => m.text.includes(p.repo) || m.text.includes(p.name))?.name;
 
-  return NextResponse.json({ projects, recentEvents });
+    // Try PR number cross-reference: match "#N" or "PR #N" or "#N "
+    if (!projectName) {
+      const prMatch = m.text.match(/#(\d+)/);
+      if (prMatch) {
+        projectName = prToProject[parseInt(prMatch[1], 10)];
+      }
+    }
+
+    // Single project fallback
+    if (!projectName && cfg.projects.length === 1) {
+      projectName = cfg.projects[0].name;
+    }
+
+    return {
+      time: m.time,
+      text: m.text.length > 120 ? m.text.slice(0, 120) + "…" : m.text,
+      actor: m.sender,
+      projectName: projectName || "",
+    };
+  });
+
+  return NextResponse.json({ projects: projectResults, recentEvents });
 }
