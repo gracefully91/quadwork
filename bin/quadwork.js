@@ -402,7 +402,7 @@ function writeQuadWorkConfig(setup) {
   };
 
   for (const agent of AGENTS) {
-    project.agents[agent] = { cwd: setup.worktrees[agent] };
+    project.agents[agent] = { cwd: setup.worktrees[agent], command: setup.backend };
   }
 
   if (setup.memoryDir) {
