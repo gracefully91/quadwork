@@ -60,7 +60,9 @@ export async function POST(req: NextRequest) {
   if (type === "agent" && agentId) {
     const agent = project.agents?.[agentId];
     if (agent) {
-      const oldDisplayName = agent.display_name || agentId.toUpperCase();
+      // Use the oldName from the request, not from current config
+      // (config may have already been updated by a Save before debounce fires)
+      const oldDisplayName = oldName || agent.display_name || agentId.toUpperCase();
       agent.display_name = newName;
       changes.push("config.json");
 
