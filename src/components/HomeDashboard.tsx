@@ -3,11 +3,6 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 
-interface RecentEvent {
-  time: string;
-  text: string;
-}
-
 interface Project {
   id: string;
   name: string;
@@ -16,7 +11,13 @@ interface Project {
   openPrs: number;
   state: "active" | "idle";
   lastActivity: string | null;
-  recentEvents: RecentEvent[];
+}
+
+interface ActivityEvent {
+  time: string;
+  text: string;
+  actor: string;
+  projectName: string;
 }
 
 function timeAgo(iso: string): string {
@@ -32,6 +33,7 @@ function timeAgo(iso: string): string {
 
 export default function HomeDashboard() {
   const [projects, setProjects] = useState<Project[]>([]);
+  const [activity, setActivity] = useState<ActivityEvent[]>([]);
 
   useEffect(() => {
     fetch("/api/projects")
@@ -40,18 +42,11 @@ export default function HomeDashboard() {
         return r.json();
       })
       .then((data) => {
-        if (Array.isArray(data)) setProjects(data);
+        if (data.projects && Array.isArray(data.projects)) setProjects(data.projects);
+        if (data.recentEvents && Array.isArray(data.recentEvents)) setActivity(data.recentEvents);
       })
       .catch(() => {});
   }, []);
-
-  // Aggregate recent events across all projects
-  const allEvents = projects
-    .flatMap((p) =>
-      (p.recentEvents || []).map((e) => ({ ...e, projectName: p.name, projectId: p.id }))
-    )
-    .sort((a, b) => (b.time || "").localeCompare(a.time || ""))
-    .slice(0, 10);
 
   return (
     <div className="h-full overflow-y-auto p-6">
@@ -121,19 +116,22 @@ export default function HomeDashboard() {
       <div className="mb-6">
         <h2 className="text-xs text-text-muted uppercase tracking-wider mb-3">Recent Activity</h2>
         <div className="border border-border bg-bg-surface">
-          {allEvents.length === 0 && (
+          {activity.length === 0 && (
             <div className="px-3 py-3 text-[11px] text-text-muted">No recent activity</div>
           )}
-          {allEvents.map((item, i) => (
+          {activity.map((item, i) => (
             <div
               key={`${item.time}-${i}`}
               className="flex gap-3 px-3 py-1.5 border-b border-border/50 last:border-b-0 text-[11px]"
             >
-              <span className="text-text-muted shrink-0 w-14 text-right tabular-nums">
-                {item.time ? timeAgo(item.time) : ""}
+              <span className="text-text-muted shrink-0 w-10 text-right tabular-nums">
+                {item.time?.slice(0, 5) || ""}
               </span>
-              <span className="text-accent shrink-0 font-semibold">
+              <span className="text-accent shrink-0 font-semibold w-12">
                 {item.projectName}
+              </span>
+              <span className="text-[#ffcc00] shrink-0 font-semibold w-6">
+                {item.actor}
               </span>
               <span className="text-text truncate min-w-0">
                 {item.text}

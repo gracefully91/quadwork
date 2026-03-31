@@ -14,7 +14,13 @@ interface ProjectConfig {
   agents?: Record<string, unknown>;
 }
 
-function getConfig(): { projects: ProjectConfig[] } {
+interface ChattrConfig {
+  agentchattr_url?: string;
+  agentchattr_token?: string;
+  projects: ProjectConfig[];
+}
+
+function getConfig(): ChattrConfig {
   try {
     const raw = fs.readFileSync(CONFIG_PATH, "utf-8");
     return JSON.parse(raw);
@@ -33,83 +39,82 @@ function ghJson(args: string[]): unknown[] {
   }
 }
 
-interface GhEvent {
-  type: string;
-  actor: { login: string };
-  created_at: string;
-  payload: {
-    action?: string;
-    pull_request?: { number: number; title: string };
-    ref?: string;
-    size?: number;
-    review?: { state: string };
-  };
+interface ChatMessage {
+  id: number;
+  sender: string;
+  text: string;
+  time: string;
 }
 
-function formatEvent(e: GhEvent): string {
-  const actor = e.actor?.login || "unknown";
-  switch (e.type) {
-    case "PushEvent":
-      return `${actor} pushed to ${e.payload.ref?.replace("refs/heads/", "") || "branch"}`;
-    case "PullRequestEvent": {
-      const pr = e.payload.pull_request;
-      return `${actor} ${e.payload.action || "updated"} PR #${pr?.number || "?"}: ${pr?.title || ""}`;
-    }
-    case "PullRequestReviewEvent": {
-      const pr = e.payload.pull_request;
-      const state = e.payload.review?.state?.toLowerCase() || "reviewed";
-      return `${actor} ${state} PR #${pr?.number || "?"}: ${pr?.title || ""}`;
-    }
-    case "IssuesEvent":
-      return `${actor} ${e.payload.action || "updated"} an issue`;
-    default:
-      return `${actor}: ${e.type}`;
+async function getChatActivity(cfg: ChattrConfig): Promise<ChatMessage[]> {
+  const url = cfg.agentchattr_url || "http://127.0.0.1:8300";
+  const token = cfg.agentchattr_token;
+  const headers: Record<string, string> = token ? { "x-session-token": token } : {};
+
+  try {
+    const res = await fetch(`${url}/api/messages?channel=general&limit=30`, { headers });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data) ? data : data.messages || [];
+  } catch {
+    return [];
   }
 }
 
 function getProjectData(repo: string, agents: Record<string, unknown> | undefined) {
   if (!REPO_RE.test(repo)) {
-    return { openPrs: 0, state: "idle", lastActivity: null, recentEvents: [] };
+    return { openPrs: 0, lastActivity: null };
   }
 
   const prs = ghJson(["pr", "list", "-R", repo, "--json", "number", "--limit", "100"]);
-  const openPrs = prs.length;
 
-  // Fetch recent GitHub events for rich activity feed
-  const events = ghJson(["api", `repos/${repo}/events`, "--jq", ".[0:10]"]) as GhEvent[];
+  // Get last activity from most recent PR or event
+  const recentPrs = ghJson(["pr", "list", "-R", repo, "--state", "all", "--json", "updatedAt", "--limit", "1"]) as { updatedAt: string }[];
+  const lastActivity = recentPrs[0]?.updatedAt || null;
 
-  const recentEvents = events.map((e) => ({
-    time: e.created_at,
-    text: formatEvent(e),
-  }));
-
-  const lastActivity = events[0]?.created_at || null;
-
-  // Active = agents configured AND recent activity (push/PR event in last hour)
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-  const hasAgents = agents && Object.keys(agents).length > 0;
-  const hasRecentActivity = lastActivity && lastActivity > oneHourAgo;
-  const state = hasAgents && hasRecentActivity ? "active" : "idle";
-
-  return { openPrs, state, lastActivity, recentEvents: recentEvents.slice(0, 5) };
+  return {
+    openPrs: prs.length,
+    lastActivity,
+  };
 }
 
 export async function GET() {
   const cfg = getConfig();
 
+  // Fetch chat messages for activity feed (has correct agent names)
+  const chatMsgs = await getChatActivity(cfg);
+
+  // Filter for workflow events (PR, merge, push, approve mentions)
+  const eventKeywords = /\b(PR|merged|pushed|approved|opened|closed|review|commit)\b/i;
+  const workflowMsgs = chatMsgs
+    .filter((m) => eventKeywords.test(m.text) && m.sender !== "system")
+    .slice(-10)
+    .reverse();
+
   const projects = cfg.projects.map((p: ProjectConfig) => {
     const data = getProjectData(p.repo, p.agents);
+    const hasAgents = p.agents && Object.keys(p.agents).length > 0;
+
     return {
       id: p.id,
       name: p.name,
       repo: p.repo,
       agentCount: p.agents ? Object.keys(p.agents).length : 0,
       openPrs: data.openPrs,
-      state: data.state,
+      // Active = project has agents configured (running state assumed when dashboard is in use)
+      state: hasAgents ? "active" : "idle",
       lastActivity: data.lastActivity,
-      recentEvents: data.recentEvents,
     };
   });
 
-  return NextResponse.json(projects);
+  // Build activity feed from chat with correct agent identities
+  const recentEvents = workflowMsgs.map((m) => ({
+    time: m.time,
+    text: m.text.length > 120 ? m.text.slice(0, 120) + "…" : m.text,
+    actor: m.sender,
+    // Try to match project by repo mention in message
+    projectName: cfg.projects.find((p) => m.text.includes(p.repo) || m.text.includes(p.name))?.name || cfg.projects[0]?.name || "",
+  }));
+
+  return NextResponse.json({ projects, recentEvents });
 }
