@@ -21,6 +21,18 @@ app.get("/api/config", (_req, res) => {
   res.json(cfg);
 });
 
+// --- Active sessions tracking ---
+
+const activeSessions = new Map(); // key: "project/agent" → { projectId, agentId }
+
+app.get("/api/sessions", (_req, res) => {
+  const sessions = [];
+  for (const [, info] of activeSessions) {
+    sessions.push(info);
+  }
+  res.json(sessions);
+});
+
 // --- WebSocket + PTY ---
 
 const wss = new WebSocketServer({ server, path: "/ws/terminal" });
@@ -41,6 +53,9 @@ wss.on("connection", (ws, req) => {
     ws.close(1008, `unknown project/agent: ${projectId}/${agentId}`);
     return;
   }
+
+  const sessionKey = `${projectId}/${agentId}`;
+  activeSessions.set(sessionKey, { projectId, agentId });
 
   let term;
   try {
@@ -89,6 +104,7 @@ wss.on("connection", (ws, req) => {
   });
 
   ws.on("close", () => {
+    activeSessions.delete(sessionKey);
     term.kill();
   });
 });

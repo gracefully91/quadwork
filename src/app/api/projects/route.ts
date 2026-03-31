@@ -29,25 +29,32 @@ function getConfig(): ChattrConfig {
   }
 }
 
-let backendAlive: boolean | null = null;
+let activeProjects: Set<string> | null = null;
 
-function checkBackendAlive(projectId: string): "active" | "idle" {
-  // Cache the backend check for all projects in one request
-  if (backendAlive === null) {
-    try {
-      const cfg = getConfig();
-      const port = (cfg as unknown as { port?: number }).port || 3001;
-      execFileSync("curl", ["-sf", "--max-time", "1", `http://127.0.0.1:${port}/api/health`], {
-        encoding: "utf-8",
-        timeout: 2000,
-      });
-      backendAlive = true;
-    } catch {
-      backendAlive = false;
+function fetchActiveSessions(): Set<string> {
+  if (activeProjects !== null) return activeProjects;
+  activeProjects = new Set();
+  try {
+    const cfg = getConfig();
+    const port = (cfg as unknown as { port?: number }).port || 3001;
+    const out = execFileSync("curl", ["-sf", "--max-time", "1", `http://127.0.0.1:${port}/api/sessions`], {
+      encoding: "utf-8",
+      timeout: 2000,
+    });
+    const sessions = JSON.parse(out);
+    if (Array.isArray(sessions)) {
+      for (const s of sessions) {
+        if (s.projectId) activeProjects.add(s.projectId);
+      }
     }
+  } catch {
+    // Backend not running — all projects idle
   }
-  void projectId;
-  return backendAlive ? "active" : "idle";
+  return activeProjects;
+}
+
+function isProjectActive(projectId: string): "active" | "idle" {
+  return fetchActiveSessions().has(projectId) ? "active" : "idle";
 }
 
 function ghJson(args: string[]): unknown[] {
@@ -100,7 +107,7 @@ function getProjectData(repo: string, agents: Record<string, unknown> | undefine
 }
 
 export async function GET() {
-  backendAlive = null; // Reset per-request
+  activeProjects = null; // Reset per-request
   const cfg = getConfig();
 
   // Fetch chat messages for activity feed (has correct agent names)
@@ -123,9 +130,8 @@ export async function GET() {
       repo: p.repo,
       agentCount: p.agents ? Object.keys(p.agents).length : 0,
       openPrs: data.openPrs,
-      // Active = backend server has active PTY sessions for this project
-      // True process monitoring comes in #12 (agent lifecycle); for now check backend health
-      state: hasAgents ? checkBackendAlive(p.id) : "idle",
+      // Active = backend has active PTY sessions for this specific project
+      state: hasAgents ? isProjectActive(p.id) : "idle",
       lastActivity: data.lastActivity,
     };
   });
