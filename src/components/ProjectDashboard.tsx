@@ -5,6 +5,7 @@ import TerminalPanel from "./TerminalPanel";
 import TerminalGrid from "./TerminalGrid";
 import PanelHeader from "./PanelHeader";
 import ChatPanel from "./ChatPanel";
+import GitHubPanel from "./GitHubPanel";
 
 const MIN_SIZE = 150; // px
 const DIVIDER = 4; // px
@@ -94,9 +95,9 @@ export default function ProjectDashboard({ projectId }: ProjectDashboardProps) {
 
       {/* Panel 2: GitHub placeholder — top-right */}
       <div className="flex flex-col overflow-hidden">
-        <PanelHeader label="Panel 2" />
-        <div className="flex-1 min-h-0 flex items-center justify-center">
-          <span className="text-xs text-text-muted">GitHub — #9</span>
+        <PanelHeader label="GitHub" />
+        <div className="flex-1 min-h-0">
+          <GitHubPanel projectId={projectId} />
         </div>
       </div>
 
