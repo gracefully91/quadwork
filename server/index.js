@@ -238,6 +238,29 @@ app.get("/api/sessions", (_req, res) => {
   res.json(sessions);
 });
 
+// Write to an active PTY session
+app.post("/api/agents/:project/:agent/write", (req, res) => {
+  const { project, agent } = req.params;
+  const key = `${project}/${agent}`;
+  const session = activeSessions.get(key);
+
+  if (!session || !session.term) {
+    return res.status(404).json({ ok: false, error: "No active terminal session" });
+  }
+
+  const { text } = req.body || {};
+  if (!text) {
+    return res.status(400).json({ ok: false, error: "Missing text" });
+  }
+
+  try {
+    session.term.write(text);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // --- WebSocket + PTY ---
 
 const wss = new WebSocketServer({ server, path: "/ws/terminal" });
@@ -276,8 +299,8 @@ wss.on("connection", (ws, req) => {
     return;
   }
 
-  // Register session only after successful PTY spawn
-  activeSessions.set(sessionKey, { projectId, agentId });
+  // Register session only after successful PTY spawn (include term for write access)
+  activeSessions.set(sessionKey, { projectId, agentId, term });
 
   // PTY → client
   term.onData((data) => {
