@@ -33,48 +33,79 @@ function ghJson(args: string[]): unknown[] {
   }
 }
 
-function getProjectData(repo: string) {
-  if (!REPO_RE.test(repo)) return { openPrs: 0, lastActivity: null, recentEvents: [] };
+interface GhEvent {
+  type: string;
+  actor: { login: string };
+  created_at: string;
+  payload: {
+    action?: string;
+    pull_request?: { number: number; title: string };
+    ref?: string;
+    size?: number;
+    review?: { state: string };
+  };
+}
 
-  const prs = ghJson(["pr", "list", "-R", repo, "--json", "number,title,createdAt,author", "--limit", "100"]);
+function formatEvent(e: GhEvent): string {
+  const actor = e.actor?.login || "unknown";
+  switch (e.type) {
+    case "PushEvent":
+      return `${actor} pushed to ${e.payload.ref?.replace("refs/heads/", "") || "branch"}`;
+    case "PullRequestEvent": {
+      const pr = e.payload.pull_request;
+      return `${actor} ${e.payload.action || "updated"} PR #${pr?.number || "?"}: ${pr?.title || ""}`;
+    }
+    case "PullRequestReviewEvent": {
+      const pr = e.payload.pull_request;
+      const state = e.payload.review?.state?.toLowerCase() || "reviewed";
+      return `${actor} ${state} PR #${pr?.number || "?"}: ${pr?.title || ""}`;
+    }
+    case "IssuesEvent":
+      return `${actor} ${e.payload.action || "updated"} an issue`;
+    default:
+      return `${actor}: ${e.type}`;
+  }
+}
+
+function getProjectData(repo: string, agents: Record<string, unknown> | undefined) {
+  if (!REPO_RE.test(repo)) {
+    return { openPrs: 0, state: "idle", lastActivity: null, recentEvents: [] };
+  }
+
+  const prs = ghJson(["pr", "list", "-R", repo, "--json", "number", "--limit", "100"]);
   const openPrs = prs.length;
 
-  // Get recent events: last 5 merged PRs + last 5 closed issues
-  const mergedPrs = ghJson(["pr", "list", "-R", repo, "--state", "merged", "--json", "number,title,mergedAt,author", "--limit", "5"]);
-  const events: { time: string; text: string }[] = [];
+  // Fetch recent GitHub events for rich activity feed
+  const events = ghJson(["api", `repos/${repo}/events`, "--jq", ".[0:10]"]) as GhEvent[];
 
-  for (const pr of prs.slice(0, 3) as { number: number; title: string; createdAt: string; author: { login: string } }[]) {
-    events.push({ time: pr.createdAt, text: `PR #${pr.number} opened: ${pr.title}` });
-  }
-  for (const pr of mergedPrs.slice(0, 3) as { number: number; title: string; mergedAt: string; author: { login: string } }[]) {
-    events.push({ time: pr.mergedAt, text: `PR #${pr.number} merged: ${pr.title}` });
-  }
+  const recentEvents = events.map((e) => ({
+    time: e.created_at,
+    text: formatEvent(e),
+  }));
 
-  // Sort by time descending
-  events.sort((a, b) => (b.time || "").localeCompare(a.time || ""));
+  const lastActivity = events[0]?.created_at || null;
 
-  // Last activity is the most recent event
-  const lastActivity = events[0]?.time || null;
-
-  // Active if any activity in the last hour
+  // Active = agents configured AND recent activity (push/PR event in last hour)
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-  const state = lastActivity && lastActivity > oneHourAgo ? "active" : "idle";
+  const hasAgents = agents && Object.keys(agents).length > 0;
+  const hasRecentActivity = lastActivity && lastActivity > oneHourAgo;
+  const state = hasAgents && hasRecentActivity ? "active" : "idle";
 
-  return { openPrs, lastActivity, state, recentEvents: events.slice(0, 5) };
+  return { openPrs, state, lastActivity, recentEvents: recentEvents.slice(0, 5) };
 }
 
 export async function GET() {
   const cfg = getConfig();
 
   const projects = cfg.projects.map((p: ProjectConfig) => {
-    const data = getProjectData(p.repo);
+    const data = getProjectData(p.repo, p.agents);
     return {
       id: p.id,
       name: p.name,
       repo: p.repo,
       agentCount: p.agents ? Object.keys(p.agents).length : 0,
       openPrs: data.openPrs,
-      state: data.state || "idle",
+      state: data.state,
       lastActivity: data.lastActivity,
       recentEvents: data.recentEvents,
     };
