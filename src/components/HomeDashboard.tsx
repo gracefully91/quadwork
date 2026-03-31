@@ -42,7 +42,7 @@ export default function HomeDashboard() {
         return r.json();
       })
       .then((data) => {
-        if (data.projects && Array.isArray(data.projects)) setProjects(data.projects);
+        if (data.projects && Array.isArray(data.projects)) setProjects(data.projects.filter((p: Project & { archived?: boolean }) => !p.archived));
         if (data.recentEvents && Array.isArray(data.recentEvents)) setActivity(data.recentEvents);
       })
       .catch(() => {});

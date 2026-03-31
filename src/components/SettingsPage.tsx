@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 
 interface AgentConfig {
@@ -28,6 +28,7 @@ interface ProjectConfig {
   trigger_enabled?: boolean;
   trigger_interval?: number;
   trigger_message?: string;
+  archived?: boolean;
 }
 
 interface Config {
@@ -203,6 +204,80 @@ export default function SettingsPage() {
     setExpanded({ ...expanded, [id]: true });
   };
 
+  // Track original names for debounced rename propagation
+  const originalNames = useRef<Record<string, string>>({});
+  const renameTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  const renameProject = (idx: number, newName: string) => {
+    if (!config) return;
+    const project = config.projects[idx];
+    const key = `project:${project.id}`;
+
+    // Store the original name on first edit
+    if (!(key in originalNames.current)) {
+      originalNames.current[key] = project.name;
+    }
+
+    // Update local state immediately for responsive UI
+    updateProject(idx, { name: newName });
+
+    // Debounce the API propagation (800ms after last keystroke)
+    if (renameTimers.current[key]) clearTimeout(renameTimers.current[key]);
+    renameTimers.current[key] = setTimeout(() => {
+      const oldName = originalNames.current[key];
+      if (oldName && oldName !== newName) {
+        fetch("/api/rename", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "project", projectId: project.id, oldName, newName }),
+        })
+          .then(() => load())
+          .catch(() => {});
+      }
+      delete originalNames.current[key];
+      delete renameTimers.current[key];
+    }, 800);
+  };
+
+  const renameAgent = (projectIdx: number, agentId: string, newName: string) => {
+    if (!config) return;
+    const project = config.projects[projectIdx];
+    const agent = project.agents?.[agentId];
+    const key = `agent:${project.id}:${agentId}`;
+
+    if (!(key in originalNames.current)) {
+      originalNames.current[key] = agent?.display_name || agentId.toUpperCase();
+    }
+
+    updateAgent(projectIdx, agentId, { display_name: newName });
+
+    if (renameTimers.current[key]) clearTimeout(renameTimers.current[key]);
+    renameTimers.current[key] = setTimeout(() => {
+      const oldName = originalNames.current[key];
+      if (oldName && oldName !== newName) {
+        fetch("/api/rename", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "agent", projectId: project.id, agentId, oldName, newName }),
+        })
+          .then(() => load())
+          .catch(() => {});
+      }
+      delete originalNames.current[key];
+      delete renameTimers.current[key];
+    }, 800);
+  };
+
+  const archiveProject = (idx: number) => {
+    if (!config) return;
+    updateProject(idx, { archived: true });
+  };
+
+  const restoreProject = (idx: number) => {
+    if (!config) return;
+    updateProject(idx, { archived: false });
+  };
+
   const removeProject = (idx: number) => {
     if (!config) return;
     const projects = config.projects.filter((_, i) => i !== idx);
@@ -254,9 +329,10 @@ export default function SettingsPage() {
 
       {/* Per-project settings */}
       <section className="mb-6">
-        <h2 className="text-[11px] text-text-muted uppercase tracking-wider mb-3">Projects</h2>
+        <h2 className="text-[11px] text-text-muted uppercase tracking-wider mb-3">Active Projects</h2>
 
-        {config.projects.map((project, idx) => {
+        {config.projects.filter((p) => !p.archived).map((project) => {
+          const idx = config.projects.indexOf(project);
           const isExpanded = expanded[project.id] ?? false;
           const telegram = project.telegram || { enabled: false, bot_token: "", chat_id: "" };
 
@@ -278,7 +354,7 @@ export default function SettingsPage() {
                     <Input
                       label="Project Name"
                       value={project.name}
-                      onChange={(v) => updateProject(idx, { name: v })}
+                      onChange={(v) => renameProject(idx, v)}
                     />
                     <Input
                       label="GitHub Repo"
@@ -308,11 +384,16 @@ export default function SettingsPage() {
                       {Object.entries(project.agents || {}).map(([agentId, agent]) => (
                         <div key={agentId} className="border-b border-border/50 last:border-b-0">
                           <div className="grid grid-cols-5 gap-0 px-2 py-1">
-                            <input
-                              value={agent.display_name || agentId.toUpperCase()}
-                              onChange={(e) => updateAgent(idx, agentId, { display_name: e.target.value })}
-                              className="bg-transparent text-[11px] text-text font-semibold outline-none border border-border px-1 py-0.5 focus:border-accent"
-                            />
+                            <div className="flex flex-col gap-0.5">
+                              <input
+                                value={agent.display_name || agentId.toUpperCase()}
+                                onChange={(e) => renameAgent(idx, agentId, e.target.value)}
+                                className="bg-transparent text-[11px] text-text font-semibold outline-none border border-border px-1 py-0.5 focus:border-accent"
+                              />
+                              <span className="text-[9px] text-text-muted px-1">
+                                {agentId === "t1" ? "Owner" : agentId.startsWith("t2") ? "Reviewer" : "Builder"}
+                              </span>
+                            </div>
                             <select
                               value={agent.command || "claude"}
                               onChange={(e) => updateAgent(idx, agentId, { command: e.target.value })}
@@ -494,10 +575,25 @@ export default function SettingsPage() {
                   </div>
 
                   {/* Remove project */}
-                  <div className="mt-4 flex justify-end">
+                  <div className="mt-4 flex justify-end gap-3">
+                    {project.archived ? (
+                      <button
+                        onClick={() => restoreProject(idx)}
+                        className="text-[11px] text-accent hover:underline"
+                      >
+                        Restore Project
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => archiveProject(idx)}
+                        className="text-[11px] text-text-muted hover:text-text transition-colors"
+                      >
+                        Archive
+                      </button>
+                    )}
                     {confirmDelete === project.id ? (
                       <div className="flex items-center gap-2">
-                        <span className="text-[11px] text-error">Remove this project?</span>
+                        <span className="text-[11px] text-error">Remove?</span>
                         <button
                           onClick={() => removeProject(idx)}
                           className="px-2 py-1 text-[11px] bg-error text-bg font-semibold"
@@ -516,7 +612,7 @@ export default function SettingsPage() {
                         onClick={() => setConfirmDelete(project.id)}
                         className="text-[11px] text-error hover:text-text transition-colors"
                       >
-                        Remove Project
+                        Remove
                       </button>
                     )}
                   </div>
@@ -533,6 +629,44 @@ export default function SettingsPage() {
         >
           + Add Project
         </button>
+
+        {/* Archived projects */}
+        {config.projects.some((p) => p.archived) && (
+          <>
+            <hr className="border-border my-4" />
+            <h2 className="text-[11px] text-text-muted uppercase tracking-wider mb-3">Archived</h2>
+            {config.projects.filter((p) => p.archived).map((project) => {
+              const idx = config.projects.indexOf(project);
+              return (
+                <div key={project.id} className="border border-border mb-3 opacity-60">
+                  <div className="flex items-center justify-between px-3 py-2">
+                    <span className="text-[12px] text-text-muted">{project.name}</span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => restoreProject(idx)}
+                        className="text-[11px] text-accent hover:underline"
+                      >
+                        Restore
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (confirmDelete === project.id) {
+                            removeProject(idx);
+                          } else {
+                            setConfirmDelete(project.id);
+                          }
+                        }}
+                        className="text-[11px] text-error hover:underline"
+                      >
+                        {confirmDelete === project.id ? "Confirm Remove" : "Remove"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </>
+        )}
       </section>
 
       {/* Bottom save */}
