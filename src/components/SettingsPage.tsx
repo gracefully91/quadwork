@@ -96,6 +96,7 @@ export default function SettingsPage() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [autoAdded, setAutoAdded] = useState(false);
+  const [daemonStatus, setDaemonStatus] = useState<Record<string, boolean>>({});
 
   const load = useCallback(() => {
     fetch("/api/config")
@@ -114,6 +115,21 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Poll telegram daemon status for each project
+  useEffect(() => {
+    if (!config) return;
+    for (const p of config.projects) {
+      if (p.telegram?.bot_token) {
+        fetch(`/api/telegram?project=${encodeURIComponent(p.id)}`)
+          .then((r) => r.ok ? r.json() : null)
+          .then((d) => {
+            if (d) setDaemonStatus((prev) => ({ ...prev, [p.id]: d.running }));
+          })
+          .catch(() => {});
+      }
+    }
+  }, [config]);
 
   // Auto-add project when navigated with ?add=true
   useEffect(() => {
@@ -346,20 +362,10 @@ export default function SettingsPage() {
                     <h3 className="text-[10px] text-text-muted uppercase tracking-wider mb-2">Telegram Bridge</h3>
                     <div className="border border-border p-3">
                       <div className="flex items-center gap-3 mb-3">
-                        <button
-                          onClick={() => updateTelegram(idx, { enabled: !telegram.enabled })}
-                          className={`w-8 h-4 rounded-full transition-colors relative ${
-                            telegram.enabled ? "bg-accent" : "bg-border"
-                          }`}
-                        >
-                          <span
-                            className={`absolute top-0.5 w-3 h-3 rounded-full bg-text transition-transform ${
-                              telegram.enabled ? "left-4" : "left-0.5"
-                            }`}
-                          />
-                        </button>
-                        <span className="text-[11px] text-text">{telegram.enabled ? "Enabled" : "Disabled"}</span>
-                        <span className={`w-1.5 h-1.5 rounded-full ${telegram.enabled ? "bg-accent" : "bg-text-muted"}`} />
+                        <span className={`w-1.5 h-1.5 rounded-full ${daemonStatus[project.id] ? "bg-accent" : "bg-text-muted"}`} />
+                        <span className="text-[11px] text-text">
+                          {daemonStatus[project.id] ? "Running" : "Stopped"}
+                        </span>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
                         <Input
@@ -405,7 +411,7 @@ export default function SettingsPage() {
                         </button>
                         <button
                           onClick={() => {
-                            const action = telegram.enabled ? "stop" : "start";
+                            const action = daemonStatus[project.id] ? "stop" : "start";
                             fetch(`/api/telegram?action=${action}`, {
                               method: "POST",
                               headers: { "Content-Type": "application/json" },
@@ -413,18 +419,18 @@ export default function SettingsPage() {
                             })
                               .then((r) => r.json())
                               .then((d) => {
-                                if (d.ok) updateTelegram(idx, { enabled: action === "start", status: action === "start" ? "running" : "stopped" });
+                                if (d.ok) setDaemonStatus((prev) => ({ ...prev, [project.id]: d.running }));
                                 else alert(`Error: ${d.error}`);
                               })
                               .catch(() => alert(`${action} failed`));
                           }}
                           className={`px-2 py-1 text-[11px] border border-border transition-colors ${
-                            telegram.enabled
+                            daemonStatus[project.id]
                               ? "text-error hover:border-error"
                               : "text-accent hover:border-accent"
                           }`}
                         >
-                          {telegram.enabled ? "Stop Daemon" : "Start Daemon"}
+                          {daemonStatus[project.id] ? "Stop Daemon" : "Start Daemon"}
                         </button>
                       </div>
                     </div>
