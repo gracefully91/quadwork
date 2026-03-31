@@ -21,6 +21,7 @@ const INITIAL_STEPS: Step[] = [
   { id: "workdir", label: "Working Directory", status: "pending" },
   { id: "worktrees", label: "Worktree Setup", status: "pending" },
   { id: "seeds", label: "Seed Files", status: "pending" },
+  { id: "agentchattr", label: "AgentChattr Config", status: "pending", optional: true },
   { id: "config", label: "Save Config", status: "pending" },
 ];
 
@@ -252,6 +253,30 @@ export default function SetupWizard() {
               <div className="flex gap-2">
                 <button onClick={seedFiles} disabled={loading} className="px-4 py-1.5 bg-accent text-bg text-[12px] font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
                   {loading ? "Creating..." : "Create Seed Files"}
+                </button>
+                <button onClick={skipStep} className="px-3 py-1.5 text-[12px] text-text-muted border border-border hover:text-text transition-colors">
+                  Skip
+                </button>
+              </div>
+            </div>
+          )}
+
+          {step?.id === "agentchattr" && (
+            <div>
+              <h2 className="text-sm font-semibold text-text mb-3">AgentChattr Configuration</h2>
+              <p className="text-[11px] text-text-muted mb-3">Add agents to AgentChattr config.toml and restart the server.</p>
+              {step.error && <p className="text-[11px] text-error mb-2">{step.error}</p>}
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    const result = await apiCall("agentchattr-config", { workingDir, projectName, repo });
+                    if (result.ok) goNext();
+                    else updateStep(currentStep, { status: "error", error: result.error });
+                  }}
+                  disabled={loading}
+                  className="px-4 py-1.5 bg-accent text-bg text-[12px] font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50"
+                >
+                  {loading ? "Updating..." : "Update AgentChattr Config"}
                 </button>
                 <button onClick={skipStep} className="px-3 py-1.5 text-[12px] text-text-muted border border-border hover:text-text transition-colors">
                   Skip

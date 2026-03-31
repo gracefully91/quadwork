@@ -28,6 +28,8 @@ export async function POST(req: NextRequest) {
       return createWorktrees(body.workingDir, body.repo);
     case "seed-files":
       return seedFiles(body.workingDir, body.projectName, body.repo);
+    case "agentchattr-config":
+      return updateAgentChattr(body.workingDir, body.projectName);
     case "add-config":
       return addConfig(body);
     default:
@@ -66,7 +68,8 @@ function createWorktrees(workingDir: string, repo: string) {
       created.push(`${agent} (exists)`);
       continue;
     }
-    const result = exec("git", ["worktree", "add", wtDir, "main"], { cwd: workingDir });
+    // Use -b to create a new branch per agent (avoids "main already used" error)
+    const result = exec("git", ["worktree", "add", "-b", `worktree/${agent}`, wtDir, "HEAD"], { cwd: workingDir });
     if (result.ok) {
       created.push(agent);
     } else {
@@ -103,6 +106,60 @@ function seedFiles(workingDir: string, projectName: string, repo: string) {
   }
 
   return NextResponse.json({ ok: true, seeded });
+}
+
+function updateAgentChattr(workingDir: string, projectName: string) {
+  if (!workingDir) return NextResponse.json({ ok: false, error: "Missing working directory" });
+
+  // Find AgentChattr config.toml
+  const tomlPaths = [
+    path.join(workingDir, "agentchattr", "config.toml"),
+    path.join(workingDir, "..", "agentchattr", "config.toml"),
+    path.join(os.homedir(), ".agentchattr", "config.toml"),
+  ];
+
+  let tomlPath = tomlPaths.find((p) => fs.existsSync(p));
+
+  if (!tomlPath) {
+    // Create a default config.toml
+    const dir = path.join(workingDir, "agentchattr");
+    fs.mkdirSync(dir, { recursive: true });
+    tomlPath = path.join(dir, "config.toml");
+
+    const agents = ["t1", "t2a", "t2b", "t3"];
+    const colors = ["#10a37f", "#22c55e", "#f59e0b", "#da7756"];
+    const labels = ["Owner", "Reviewer", "Reviewer", "Builder"];
+    let content = `[meta]\nname = "${projectName}"\n\n`;
+
+    agents.forEach((agent, i) => {
+      content += `[agents.${agent}]\ncommand = "claude"\ncwd = "${path.join(workingDir, agent)}"\ncolor = "${colors[i]}"\nlabel = "${agent.toUpperCase()} ${labels[i]}"\nmcp_inject = "flag"\n\n`;
+    });
+
+    fs.writeFileSync(tomlPath, content);
+  } else {
+    // Append missing agents to existing config
+    let content = fs.readFileSync(tomlPath, "utf-8");
+    const agents = ["t1", "t2a", "t2b", "t3"];
+    const colors = ["#10a37f", "#22c55e", "#f59e0b", "#da7756"];
+    const labels = ["Owner", "Reviewer", "Reviewer", "Builder"];
+
+    agents.forEach((agent, i) => {
+      if (!content.includes(`[agents.${agent}]`)) {
+        content += `\n[agents.${agent}]\ncommand = "claude"\ncwd = "${path.join(workingDir, agent)}"\ncolor = "${colors[i]}"\nlabel = "${agent.toUpperCase()} ${labels[i]}"\nmcp_inject = "flag"\n`;
+      }
+    });
+
+    fs.writeFileSync(tomlPath, content);
+  }
+
+  // Try to restart AgentChattr if running
+  try {
+    const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8"));
+    const port = cfg.port || 3001;
+    fetch(`http://127.0.0.1:${port}/api/agentchattr/restart`, { method: "POST" }).catch(() => {});
+  } catch {}
+
+  return NextResponse.json({ ok: true, path: tomlPath });
 }
 
 function addConfig(body: { id: string; name: string; repo: string; workingDir: string; backend: string }) {
