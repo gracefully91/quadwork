@@ -25,7 +25,10 @@ const INITIAL_STEPS: Step[] = [
   { id: "config", label: "Save Config", status: "pending" },
 ];
 
-const BACKENDS = ["claude-code", "codex"];
+const BACKENDS: { value: string; label: string }[] = [
+  { value: "claude", label: "Claude Code" },
+  { value: "codex", label: "Codex" },
+];
 
 export default function SetupWizard() {
   const router = useRouter();
@@ -36,7 +39,7 @@ export default function SetupWizard() {
   const [projectName, setProjectName] = useState("");
   const [repo, setRepo] = useState("");
   const [backends, setBackends] = useState<Record<string, string>>({
-    t1: "claude-code", t2a: "claude-code", t2b: "claude-code", t3: "claude-code",
+    t1: "claude", t2a: "claude", t2b: "claude", t3: "claude",
   });
   const [workingDir, setWorkingDir] = useState("");
   const [loading, setLoading] = useState(false);
@@ -231,7 +234,7 @@ export default function SetupWizard() {
                       onChange={(e) => setBackends({ ...backends, [agent]: e.target.value })}
                       className="bg-transparent border border-border px-2 py-0.5 text-[11px] text-text outline-none focus:border-accent cursor-pointer"
                     >
-                      {BACKENDS.map((b) => <option key={b} value={b} className="bg-bg-surface">{b}</option>)}
+                      {BACKENDS.map((b) => <option key={b.value} value={b.value} className="bg-bg-surface">{b.label}</option>)}
                     </select>
                   </div>
                 ))}
