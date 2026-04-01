@@ -46,7 +46,10 @@ const DEFAULT_AGENTS: Record<string, AgentConfig> = {
   t3: { display_name: "T3", command: "claude", cwd: "", model: "sonnet", agents_md: "" },
 };
 
-const BACKENDS = ["claude-code", "codex"];
+const BACKENDS: { value: string; label: string }[] = [
+  { value: "claude", label: "Claude Code" },
+  { value: "codex", label: "Codex" },
+];
 const MODELS = ["opus", "sonnet", "haiku"];
 
 function Input({ label, value, onChange, type = "text", placeholder }: {
@@ -74,7 +77,7 @@ function Select({ label, value, onChange, options }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
-  options: string[];
+  options: { value: string; label: string }[];
 }) {
   return (
     <div className="flex flex-col gap-1">
@@ -85,7 +88,7 @@ function Select({ label, value, onChange, options }: {
         className="bg-transparent border border-border px-2 py-1.5 text-[12px] text-text outline-none focus:border-accent cursor-pointer"
       >
         {options.map((o) => (
-          <option key={o} value={o} className="bg-bg-surface">{o}</option>
+          <option key={o.value} value={o.value} className="bg-bg-surface">{o.label}</option>
         ))}
       </select>
     </div>
@@ -112,7 +115,7 @@ export default function SettingsPage() {
         port: data.port || 8400,
         agentchattr_url: data.agentchattr_url || "http://127.0.0.1:8300",
         agentchattr_token: data.agentchattr_token || "",
-        default_backend: data.default_backend || "claude-code",
+        default_backend: data.default_backend || "claude",
         projects: data.projects || [],
       }))
       .catch(() => {});
@@ -414,7 +417,7 @@ export default function SettingsPage() {
                               className="bg-transparent text-[11px] text-text outline-none border border-border px-1 py-0.5 focus:border-accent"
                             >
                               {BACKENDS.map((b) => (
-                                <option key={b} value={b} className="bg-bg-surface">{b}</option>
+                                <option key={b.value} value={b.value} className="bg-bg-surface">{b.label}</option>
                               ))}
                             </select>
                             <select
