@@ -151,9 +151,15 @@ export default function QueueManager({ projectId }: QueueManagerProps) {
         const project = cfg.projects?.find((p: { id: string }) => p.id === projectId);
         const t1Command = project?.agents?.t1?.command || "claude";
 
-        // Open WebSocket to create PTY session (same-origin)
+        // Open WebSocket to create PTY session
+        // In dev mode, WS connects directly to Express backend since Next.js doesn't proxy WS
         const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
-        const wsUrl = `${wsProto}//${window.location.host}/ws/terminal?project=${encodeURIComponent(projectId)}&agent=t1`;
+        const backendPort = cfg.port || 8400;
+        const currentPort = parseInt(window.location.port, 10);
+        const wsHost = (currentPort && currentPort !== backendPort)
+          ? `${window.location.hostname}:${backendPort}`
+          : window.location.host;
+        const wsUrl = `${wsProto}//${wsHost}/ws/terminal?project=${encodeURIComponent(projectId)}&agent=t1`;
         const ws = new WebSocket(wsUrl);
         await new Promise<void>((resolve, reject) => {
           ws.onopen = () => resolve();

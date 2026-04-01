@@ -540,6 +540,12 @@ router.post("/api/setup", (req, res) => {
         });
         fs.writeFileSync(tomlPath, content);
       }
+      // Restart AgentChattr so config changes take effect
+      try {
+        const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8"));
+        const port = cfg.port || 8400;
+        fetch(`http://127.0.0.1:${port}/api/agentchattr/restart`, { method: "POST" }).catch(() => {});
+      } catch {}
       return res.json({ ok: true, path: tomlPath });
     }
     case "add-config": {
