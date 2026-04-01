@@ -17,7 +17,7 @@
     "start": "node server/",
     "lint": "eslint",
     "server": "node server/",
-    "prepublishOnly": "npm run build"
+    "prepack": "npm run build"
   },
   "engines": {
     "node": ">=20"
