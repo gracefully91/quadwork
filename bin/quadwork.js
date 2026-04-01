@@ -52,24 +52,26 @@ function askSecret(rl, question) {
     stdin.setRawMode(true);
     stdin.resume();
     const onData = (ch) => {
-      const c = ch.toString("utf-8");
-      if (c === "\n" || c === "\r") {
-        stdin.setRawMode(wasRaw || false);
-        stdin.removeListener("data", onData);
-        stdout.write("\n");
-        resolve(secret);
-      } else if (c === "\u007F" || c === "\b") {
-        // Backspace
-        if (secret.length > 0) {
-          secret = secret.slice(0, -1);
-          stdout.write("\b \b");
+      // Iterate per character to handle pasted multi-char input
+      const str = ch.toString("utf-8");
+      for (const c of str) {
+        if (c === "\n" || c === "\r") {
+          stdin.setRawMode(wasRaw || false);
+          stdin.removeListener("data", onData);
+          stdout.write("\n");
+          resolve(secret);
+          return;
+        } else if (c === "\u007F" || c === "\b") {
+          if (secret.length > 0) {
+            secret = secret.slice(0, -1);
+            stdout.write("\b \b");
+          }
+        } else if (c === "\u0003") {
+          process.exit(1);
+        } else if (c >= " ") {
+          secret += c;
+          stdout.write("*");
         }
-      } else if (c === "\u0003") {
-        // Ctrl+C
-        process.exit(1);
-      } else if (c >= " ") {
-        secret += c;
-        stdout.write("*");
       }
     };
     stdin.on("data", onData);
