@@ -2,6 +2,21 @@
 
 A unified dashboard for multi-agent coding teams. Four AI agents (T1 owner, T2a/T2b reviewers, T3 builder) collaborate through terminals, chat, GitHub integration, and shared memory — all served from a single local web view.
 
+## Dashboard
+
+```
++--------+----------------------------+----------------------------+
+|        |  T1 Terminal               |  T2a Terminal              |
+| Side-  |  (Owner)                   |  (Reviewer)               |
+| bar    +----------------------------+----------------------------+
+|        |  T3 Terminal               |  T2b Terminal              |
+| [Home] |  (Builder)                 |  (Reviewer)               |
+| [Proj] +----------------------------+----------------------------+
+| [+]    |  Agent Chat (AgentChattr)  |  GitHub (Issues + PRs)    |
+| [Set]  |                            |                           |
++--------+----------------------------+----------------------------+
+```
+
 ## Features
 
 - **Terminal panels** — Live xterm.js terminals for each agent with PTY sessions
@@ -50,7 +65,7 @@ npm run server         # Express backend on :8400 (run in separate terminal)
 | Command | Description |
 |---------|-------------|
 | `quadwork init` | Interactive setup wizard — repo, worktrees, agent config |
-| `quadwork start` | Build frontend (if needed) and start the server |
+| `quadwork start` | Start the server (frontend must be pre-built) |
 | `quadwork stop` | Stop server, AgentChattr, and Telegram bridge |
 | `quadwork add-project` | Add another project to an existing setup |
 
