@@ -309,24 +309,39 @@ async function setupAddons(rl, setup, configTomlPath) {
       const chatId = await ask(rl, "Telegram chat ID", "");
 
       if (botToken && chatId) {
-        // Persist telegram settings for writeQuadWorkConfig
+        // Write bot token to ~/.quadwork/.env (never stored in config files)
+        const envPath = path.join(CONFIG_DIR, ".env");
+        const envKey = `TELEGRAM_BOT_TOKEN_${setup.projectName.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;
+        let envContent = "";
+        try { envContent = fs.readFileSync(envPath, "utf-8"); } catch {}
+        const envRegex = new RegExp(`^${envKey}=.*$`, "m");
+        const envLine = `${envKey}=${botToken}`;
+        if (envRegex.test(envContent)) {
+          envContent = envContent.replace(envRegex, envLine);
+        } else {
+          envContent = envContent.trimEnd() + (envContent ? "\n" : "") + envLine + "\n";
+        }
+        fs.writeFileSync(envPath, envContent, { mode: 0o600 });
+        ok(`Saved bot token to ${envPath}`);
+
+        // Persist telegram settings for writeQuadWorkConfig (env reference, not plaintext)
         setup.telegram = {
-          bot_token: botToken,
+          bot_token: `env:${envKey}`,
           chat_id: chatId,
           bridge_dir: telegramDir,
         };
 
-        // Append telegram section to config.toml
+        // Append telegram section to config.toml (token read from env at runtime)
         const telegramSection = `
 [telegram]
-bot_token = "${botToken}"
+bot_token = "env:${envKey}"
 chat_id = "${chatId}"
 agentchattr_url = "http://127.0.0.1:8300"
 poll_interval = 2
 bridge_sender = "telegram-bridge"
 `;
         fs.appendFileSync(configTomlPath, telegramSection);
-        ok("Added Telegram config to config.toml");
+        ok("Added Telegram config to config.toml (token stored in .env)");
 
         // Start Telegram bridge daemon
         const bridgeScript = path.join(telegramDir, "telegram_bridge.py");
