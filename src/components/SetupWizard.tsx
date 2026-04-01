@@ -110,7 +110,8 @@ export default function SetupWizard() {
   };
 
   const saveConfig = async () => {
-    const id = projectName.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+    // Use directory basename as project ID (matches CLI wizard)
+    const id = workingDir.split("/").pop() || projectName.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
     const result = await apiCall("add-config", { id, name: projectName, repo, workingDir, backends });
     if (result.ok) {
       updateStep(currentStep, { status: "done" });

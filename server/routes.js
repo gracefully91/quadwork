@@ -500,7 +500,8 @@ router.post("/api/setup", (req, res) => {
     case "seed-files": {
       const workingDir = body.workingDir;
       if (!workingDir) return res.json({ ok: false, error: "Missing working directory" });
-      const projectName = body.projectName || path.basename(workingDir);
+      // Use directory basename for sibling paths (matches CLI wizard)
+      const dirName = path.basename(workingDir);
       const parentDir = path.dirname(workingDir);
       const reviewerUser = body.reviewerUser || "";
       const reviewerTokenPath = body.reviewerTokenPath || path.join(os.homedir(), ".quadwork", "reviewer-token");
@@ -508,7 +509,7 @@ router.post("/api/setup", (req, res) => {
       const seeded = [];
       for (const agent of agents) {
         // Sibling dir layout (matches CLI wizard)
-        const wtDir = path.join(parentDir, `${projectName}-${agent}`);
+        const wtDir = path.join(parentDir, `${dirName}-${agent}`);
         if (!fs.existsSync(wtDir)) continue;
 
         // AGENTS.md — use template with placeholder substitution (matches CLI)
@@ -546,7 +547,9 @@ router.post("/api/setup", (req, res) => {
     case "agentchattr-config": {
       const workingDir = body.workingDir;
       if (!workingDir) return res.json({ ok: false, error: "Missing working directory" });
-      const projectName = body.projectName || path.basename(workingDir);
+      // Use directory basename for sibling paths, display name for metadata
+      const dirName = path.basename(workingDir);
+      const displayName = body.projectName || dirName;
       const parentDir = path.dirname(workingDir);
       const tomlPaths = [
         path.join(workingDir, "agentchattr", "config.toml"),
@@ -562,9 +565,9 @@ router.post("/api/setup", (req, res) => {
         const agents = ["t1", "t2a", "t2b", "t3"];
         const colors = ["#10a37f", "#22c55e", "#f59e0b", "#da7756"];
         const labels = ["Owner", "Reviewer", "Reviewer", "Builder"];
-        let content = `[meta]\nname = "${projectName}"\n\n`;
+        let content = `[meta]\nname = "${displayName}"\n\n`;
         agents.forEach((agent, i) => {
-          const wtDir = path.join(parentDir, `${projectName}-${agent}`);
+          const wtDir = path.join(parentDir, `${dirName}-${agent}`);
           content += `[agents.${agent}]\ncommand = "${(backends && backends[agent]) || "claude"}"\ncwd = "${wtDir}"\ncolor = "${colors[i]}"\nlabel = "${agent.toUpperCase()} ${labels[i]}"\nmcp_inject = "flag"\n\n`;
         });
         fs.writeFileSync(tomlPath, content);
@@ -575,7 +578,7 @@ router.post("/api/setup", (req, res) => {
         const labels = ["Owner", "Reviewer", "Reviewer", "Builder"];
         agents.forEach((agent, i) => {
           if (!content.includes(`[agents.${agent}]`)) {
-            const wtDir = path.join(parentDir, `${projectName}-${agent}`);
+            const wtDir = path.join(parentDir, `${dirName}-${agent}`);
             content += `\n[agents.${agent}]\ncommand = "${(backends && backends[agent]) || "claude"}"\ncwd = "${wtDir}"\ncolor = "${colors[i]}"\nlabel = "${agent.toUpperCase()} ${labels[i]}"\nmcp_inject = "flag"\n`;
           }
         });
@@ -591,20 +594,19 @@ router.post("/api/setup", (req, res) => {
     }
     case "add-config": {
       const { id, name, repo, workingDir, backends } = body;
-      const projectName = path.basename(workingDir);
+      // Use directory basename for sibling paths (matches CLI wizard)
+      const dirName = path.basename(workingDir);
       const parentDir = path.dirname(workingDir);
       let cfg;
       try { cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8")); }
       catch { cfg = { port: 8400, agentchattr_url: "http://127.0.0.1:8300", projects: [] }; }
       if (cfg.projects.some((p) => p.id === id)) return res.json({ ok: true, message: "Project already in config" });
+      // Match CLI wizard agent structure: { cwd, command }
       const agents = {};
-      for (const [agentId, role] of [["t1", "opus"], ["t2a", "sonnet"], ["t2b", "sonnet"], ["t3", "sonnet"]]) {
+      for (const agentId of ["t1", "t2a", "t2b", "t3"]) {
         agents[agentId] = {
-          display_name: agentId.toUpperCase(),
+          cwd: path.join(parentDir, `${dirName}-${agentId}`),
           command: (backends && backends[agentId]) || "claude",
-          cwd: path.join(parentDir, `${projectName}-${agentId}`),
-          model: role,
-          agents_md: "",
         };
       }
       cfg.projects.push({ id, name, repo, working_dir: workingDir, agents });
