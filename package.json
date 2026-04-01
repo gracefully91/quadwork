@@ -1,17 +1,43 @@
 {
   "name": "quadwork",
   "version": "0.1.0",
-  "private": true,
+  "description": "Unified dashboard for multi-agent coding teams — 4 AI agents, one terminal",
   "bin": {
     "quadwork": "./bin/quadwork.js"
   },
+  "files": [
+    "bin/",
+    "server/",
+    "templates/",
+    "out/"
+  ],
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "node server/",
     "lint": "eslint",
-    "server": "node server/"
+    "server": "node server/",
+    "prepublishOnly": "npm run build"
   },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "ai",
+    "agents",
+    "multi-agent",
+    "coding",
+    "dashboard",
+    "terminal",
+    "claude",
+    "codex",
+    "quadwork"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/realproject7/quadwork.git"
+  },
+  "license": "MIT",
   "dependencies": {
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
