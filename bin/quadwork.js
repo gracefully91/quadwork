@@ -15,7 +15,8 @@ const AGENTS = ["t1", "t2a", "t2b", "t3"];
 
 // ─── ANSI Helpers ──────────────────────────────────────────────────────────
 
-const c = {
+const isTTY = process.stdout.isTTY;
+const c = isTTY ? {
   reset: "\x1b[0m",
   bold: "\x1b[1m",
   dim: "\x1b[2m",
@@ -24,7 +25,7 @@ const c = {
   red: "\x1b[31m",
   cyan: "\x1b[36m",
   white: "\x1b[37m",
-};
+} : { reset: "", bold: "", dim: "", green: "", yellow: "", red: "", cyan: "", white: "" };
 
 function log(msg) { console.log(`  ${c.dim}${msg}${c.reset}`); }
 function ok(msg) { console.log(`  ${c.green}✓${c.reset} ${msg}`); }
@@ -33,6 +34,10 @@ function fail(msg) { console.error(`  ${c.red}✗ ${msg}${c.reset}`); }
 function header(msg) { console.log(`\n  ${c.cyan}${c.bold}┌─ ${msg} ${"─".repeat(Math.max(0, 54 - msg.length))}┐${c.reset}\n`); }
 
 function spinner(msg) {
+  if (!isTTY) {
+    console.log(`  ${msg}`);
+    return { stop(result) { console.log(`  ${result ? "✓" : "✗"} ${msg}`); } };
+  }
   const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
   let i = 0;
   const id = setInterval(() => {
