@@ -252,7 +252,8 @@ function writeAgentChattrConfig(setup, configTomlPath) {
   ok(`Wrote ${configTomlPath}`);
 
   // Install AgentChattr if missing, then start it
-  let acAvailable = run("agentchattr --version") || run("python3 -m agentchattr --version");
+  // Only check for the actual binary — python3 -m availability doesn't mean the CLI is in PATH
+  let acAvailable = which("agentchattr");
   if (!acAvailable) {
     log("Installing AgentChattr...");
     const installResult = run("pip install agentchattr 2>&1");
