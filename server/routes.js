@@ -500,9 +500,8 @@ router.post("/api/setup", (req, res) => {
     case "seed-files": {
       const workingDir = body.workingDir;
       if (!workingDir) return res.json({ ok: false, error: "Missing working directory" });
-      // Use directory basename for sibling paths, display name for content
+      // Use directory basename for sibling paths and template substitution (matches CLI)
       const dirName = path.basename(workingDir);
-      const displayName = body.projectName || dirName;
       const parentDir = path.dirname(workingDir);
       const reviewerUser = body.reviewerUser || "";
       const reviewerTokenPath = body.reviewerTokenPath || path.join(os.homedir(), ".quadwork", "reviewer-token");
@@ -524,7 +523,7 @@ router.post("/api/setup", (req, res) => {
             fs.writeFileSync(agentsMd, content);
           } else {
             // Fallback stub if template missing
-            fs.writeFileSync(agentsMd, `# ${displayName} — ${agent.toUpperCase()} Agent\n\nRepo: ${body.repo}\nRole: ${agent === "t1" ? "Owner" : agent.startsWith("t2") ? "Reviewer" : "Builder"}\n`);
+            fs.writeFileSync(agentsMd, `# ${dirName} — ${agent.toUpperCase()} Agent\n\nRepo: ${body.repo}\nRole: ${agent === "t1" ? "Owner" : agent.startsWith("t2") ? "Reviewer" : "Builder"}\n`);
           }
           seeded.push(`${agent}/AGENTS.md`);
         }
@@ -535,10 +534,11 @@ router.post("/api/setup", (req, res) => {
           const claudeSrc = path.join(TEMPLATES_DIR, "CLAUDE.md");
           if (fs.existsSync(claudeSrc)) {
             let content = fs.readFileSync(claudeSrc, "utf-8");
-            content = content.replace(/\{\{project_name\}\}/g, displayName);
+            // CLI uses path.basename(workingDir) for {{project_name}}
+            content = content.replace(/\{\{project_name\}\}/g, dirName);
             fs.writeFileSync(claudeMd, content);
           } else {
-            fs.writeFileSync(claudeMd, `# ${displayName}\n\nBranch: task/<issue>-<slug>\nCommit: [#<issue>] Short description\nNever push to main.\n`);
+            fs.writeFileSync(claudeMd, `# ${dirName}\n\nBranch: task/<issue>-<slug>\nCommit: [#<issue>] Short description\nNever push to main.\n`);
           }
           seeded.push(`${agent}/CLAUDE.md`);
         }
