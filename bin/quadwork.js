@@ -171,6 +171,10 @@ async function setupAgents(rl, repo) {
     return null;
   }
 
+  // Prompt for reviewer credentials (used in T2a/T2b seed templates)
+  const reviewerUser = await ask(rl, "Reviewer GitHub username (for T2a/T2b)", "");
+  const reviewerTokenPath = await ask(rl, "Reviewer token file path (for T2a/T2b)", path.join(os.homedir(), ".quadwork", "reviewer-token"));
+
   const projectName = path.basename(absDir);
   log(`Project: ${projectName}`);
   log("Creating worktrees for 4 agents...\n");
@@ -196,11 +200,14 @@ async function setupAgents(rl, repo) {
     }
     worktrees[agent] = wtDir;
 
-    // Copy AGENTS.md seed
+    // Copy AGENTS.md seed with placeholder substitution
     const seedSrc = path.join(TEMPLATES_DIR, "seeds", `${agent}.AGENTS.md`);
     const seedDst = path.join(wtDir, "AGENTS.md");
     if (fs.existsSync(seedSrc)) {
-      fs.copyFileSync(seedSrc, seedDst);
+      let seedContent = fs.readFileSync(seedSrc, "utf-8");
+      seedContent = seedContent.replace(/\{\{reviewer_github_user\}\}/g, reviewerUser);
+      seedContent = seedContent.replace(/\{\{reviewer_token_path\}\}/g, reviewerTokenPath);
+      fs.writeFileSync(seedDst, seedContent);
       log(`  Copied ${agent}.AGENTS.md`);
     }
   }
