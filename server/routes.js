@@ -13,6 +13,7 @@ const router = express.Router();
 const CONFIG_DIR = path.join(os.homedir(), ".quadwork");
 const CONFIG_PATH = path.join(CONFIG_DIR, "config.json");
 const ENV_PATH = path.join(CONFIG_DIR, ".env");
+const TEMPLATES_DIR = path.join(__dirname, "..", "templates");
 const REPO_RE = /^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/;
 
 const DEFAULT_CONFIG = {
@@ -473,34 +474,70 @@ router.post("/api/setup", (req, res) => {
         const clone = exec("gh", ["repo", "clone", body.repo, workingDir]);
         if (!clone.ok) return res.json({ ok: false, error: `Clone failed: ${clone.output}` });
       }
+      // Sibling dirs: ../projectName-t1/, ../projectName-t2a/, etc. (matches CLI wizard)
+      const projectName = path.basename(workingDir);
+      const parentDir = path.dirname(workingDir);
       const agents = ["t1", "t2a", "t2b", "t3"];
       const created = [];
       const errors = [];
       for (const agent of agents) {
-        const wtDir = path.join(workingDir, agent);
+        const wtDir = path.join(parentDir, `${projectName}-${agent}`);
         if (fs.existsSync(wtDir)) { created.push(`${agent} (exists)`); continue; }
-        const result = exec("git", ["worktree", "add", "-b", `worktree/${agent}`, wtDir, "HEAD"], { cwd: workingDir });
-        if (result.ok) created.push(agent);
-        else errors.push(`${agent}: ${result.output}`);
+        const branchName = `worktree-${agent}`;
+        exec("git", ["branch", branchName, "HEAD"], { cwd: workingDir });
+        const result = exec("git", ["worktree", "add", wtDir, branchName], { cwd: workingDir });
+        if (result.ok) {
+          created.push(agent);
+        } else {
+          // Fallback: detached worktree
+          const result2 = exec("git", ["worktree", "add", "--detach", wtDir, "HEAD"], { cwd: workingDir });
+          if (result2.ok) created.push(`${agent} (detached)`);
+          else errors.push(`${agent}: ${result.output}`);
+        }
       }
       return res.json({ ok: errors.length === 0, created, errors });
     }
     case "seed-files": {
       const workingDir = body.workingDir;
       if (!workingDir) return res.json({ ok: false, error: "Missing working directory" });
+      const projectName = body.projectName || path.basename(workingDir);
+      const parentDir = path.dirname(workingDir);
+      const reviewerUser = body.reviewerUser || "";
+      const reviewerTokenPath = body.reviewerTokenPath || path.join(os.homedir(), ".quadwork", "reviewer-token");
       const agents = ["t1", "t2a", "t2b", "t3"];
       const seeded = [];
       for (const agent of agents) {
-        const wtDir = path.join(workingDir, agent);
+        // Sibling dir layout (matches CLI wizard)
+        const wtDir = path.join(parentDir, `${projectName}-${agent}`);
         if (!fs.existsSync(wtDir)) continue;
+
+        // AGENTS.md — use template with placeholder substitution (matches CLI)
         const agentsMd = path.join(wtDir, "AGENTS.md");
         if (!fs.existsSync(agentsMd)) {
-          fs.writeFileSync(agentsMd, `# ${body.projectName} — ${agent.toUpperCase()} Agent\n\nRepo: ${body.repo}\nRole: ${agent === "t1" ? "Owner" : agent.startsWith("t2") ? "Reviewer" : "Builder"}\n`);
+          const seedSrc = path.join(TEMPLATES_DIR, "seeds", `${agent}.AGENTS.md`);
+          if (fs.existsSync(seedSrc)) {
+            let content = fs.readFileSync(seedSrc, "utf-8");
+            content = content.replace(/\{\{reviewer_github_user\}\}/g, reviewerUser);
+            content = content.replace(/\{\{reviewer_token_path\}\}/g, reviewerTokenPath);
+            fs.writeFileSync(agentsMd, content);
+          } else {
+            // Fallback stub if template missing
+            fs.writeFileSync(agentsMd, `# ${projectName} — ${agent.toUpperCase()} Agent\n\nRepo: ${body.repo}\nRole: ${agent === "t1" ? "Owner" : agent.startsWith("t2") ? "Reviewer" : "Builder"}\n`);
+          }
           seeded.push(`${agent}/AGENTS.md`);
         }
+
+        // CLAUDE.md — use template with placeholder substitution (matches CLI)
         const claudeMd = path.join(wtDir, "CLAUDE.md");
         if (!fs.existsSync(claudeMd)) {
-          fs.writeFileSync(claudeMd, `# ${body.projectName}\n\nBranch: task/<issue>-<slug>\nCommit: [#<issue>] Short description\nNever push to main.\n`);
+          const claudeSrc = path.join(TEMPLATES_DIR, "CLAUDE.md");
+          if (fs.existsSync(claudeSrc)) {
+            let content = fs.readFileSync(claudeSrc, "utf-8");
+            content = content.replace(/\{\{project_name\}\}/g, projectName);
+            fs.writeFileSync(claudeMd, content);
+          } else {
+            fs.writeFileSync(claudeMd, `# ${projectName}\n\nBranch: task/<issue>-<slug>\nCommit: [#<issue>] Short description\nNever push to main.\n`);
+          }
           seeded.push(`${agent}/CLAUDE.md`);
         }
       }
@@ -509,9 +546,11 @@ router.post("/api/setup", (req, res) => {
     case "agentchattr-config": {
       const workingDir = body.workingDir;
       if (!workingDir) return res.json({ ok: false, error: "Missing working directory" });
+      const projectName = body.projectName || path.basename(workingDir);
+      const parentDir = path.dirname(workingDir);
       const tomlPaths = [
         path.join(workingDir, "agentchattr", "config.toml"),
-        path.join(workingDir, "..", "agentchattr", "config.toml"),
+        path.join(parentDir, "agentchattr", "config.toml"),
         path.join(os.homedir(), ".agentchattr", "config.toml"),
       ];
       let tomlPath = tomlPaths.find((p) => fs.existsSync(p));
@@ -523,9 +562,10 @@ router.post("/api/setup", (req, res) => {
         const agents = ["t1", "t2a", "t2b", "t3"];
         const colors = ["#10a37f", "#22c55e", "#f59e0b", "#da7756"];
         const labels = ["Owner", "Reviewer", "Reviewer", "Builder"];
-        let content = `[meta]\nname = "${body.projectName}"\n\n`;
+        let content = `[meta]\nname = "${projectName}"\n\n`;
         agents.forEach((agent, i) => {
-          content += `[agents.${agent}]\ncommand = "${(backends && backends[agent]) || "claude"}"\ncwd = "${path.join(workingDir, agent)}"\ncolor = "${colors[i]}"\nlabel = "${agent.toUpperCase()} ${labels[i]}"\nmcp_inject = "flag"\n\n`;
+          const wtDir = path.join(parentDir, `${projectName}-${agent}`);
+          content += `[agents.${agent}]\ncommand = "${(backends && backends[agent]) || "claude"}"\ncwd = "${wtDir}"\ncolor = "${colors[i]}"\nlabel = "${agent.toUpperCase()} ${labels[i]}"\nmcp_inject = "flag"\n\n`;
         });
         fs.writeFileSync(tomlPath, content);
       } else {
@@ -535,7 +575,8 @@ router.post("/api/setup", (req, res) => {
         const labels = ["Owner", "Reviewer", "Reviewer", "Builder"];
         agents.forEach((agent, i) => {
           if (!content.includes(`[agents.${agent}]`)) {
-            content += `\n[agents.${agent}]\ncommand = "${(backends && backends[agent]) || "claude"}"\ncwd = "${path.join(workingDir, agent)}"\ncolor = "${colors[i]}"\nlabel = "${agent.toUpperCase()} ${labels[i]}"\nmcp_inject = "flag"\n`;
+            const wtDir = path.join(parentDir, `${projectName}-${agent}`);
+            content += `\n[agents.${agent}]\ncommand = "${(backends && backends[agent]) || "claude"}"\ncwd = "${wtDir}"\ncolor = "${colors[i]}"\nlabel = "${agent.toUpperCase()} ${labels[i]}"\nmcp_inject = "flag"\n`;
           }
         });
         fs.writeFileSync(tomlPath, content);
@@ -550,6 +591,8 @@ router.post("/api/setup", (req, res) => {
     }
     case "add-config": {
       const { id, name, repo, workingDir, backends } = body;
+      const projectName = path.basename(workingDir);
+      const parentDir = path.dirname(workingDir);
       let cfg;
       try { cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8")); }
       catch { cfg = { port: 8400, agentchattr_url: "http://127.0.0.1:8300", projects: [] }; }
@@ -559,7 +602,7 @@ router.post("/api/setup", (req, res) => {
         agents[agentId] = {
           display_name: agentId.toUpperCase(),
           command: (backends && backends[agentId]) || "claude",
-          cwd: path.join(workingDir, agentId),
+          cwd: path.join(parentDir, `${projectName}-${agentId}`),
           model: role,
           agents_md: "",
         };
