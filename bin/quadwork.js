@@ -258,7 +258,9 @@ function writeAgentChattrConfig(setup, configTomlPath) {
     const installResult = run("pip install agentchattr 2>&1");
     if (installResult !== null) {
       ok("Installed AgentChattr");
-      acAvailable = true;
+      // Re-check that the binary is actually in PATH after install
+      acAvailable = which("agentchattr");
+      if (!acAvailable) warn("agentchattr binary not found in PATH after install");
     } else {
       warn("Failed to install AgentChattr — install manually: pip install agentchattr");
     }
