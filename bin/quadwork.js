@@ -264,7 +264,7 @@ async function setupAgents(rl, repo) {
 
 // ─── AgentChattr Config ─────────────────────────────────────────────────────
 
-function writeAgentChattrConfig(setup, configTomlPath) {
+function writeAgentChattrConfig(setup, configTomlPath, { skipInstall = false } = {}) {
   header("Step 4: AgentChattr Setup");
 
   let tomlContent = fs.readFileSync(path.join(TEMPLATES_DIR, "config.toml"), "utf-8");
@@ -289,10 +289,9 @@ function writeAgentChattrConfig(setup, configTomlPath) {
   fs.writeFileSync(configTomlPath, tomlContent);
   ok(`Wrote ${configTomlPath}`);
 
-  // Start AgentChattr if available; skip install if it was missing in prereqs
+  // Start AgentChattr if available; optionally skip install attempt
   let acAvailable = which("agentchattr");
-  if (!acAvailable && agentChattrFound) {
-    // Was found in prereqs but not in PATH now — try install
+  if (!acAvailable && !skipInstall) {
     log("Installing AgentChattr...");
     const installResult = run("pip install agentchattr 2>&1");
     if (installResult !== null) {
@@ -537,9 +536,9 @@ async function cmdInit() {
     const setup = await setupAgents(rl, repo);
     if (!setup) { rl.close(); process.exit(1); }
 
-    // Step 4: AgentChattr config
+    // Step 4: AgentChattr config (skip install if prereqs already flagged it missing)
     const configTomlPath = path.join(setup.absDir, "config.toml");
-    writeAgentChattrConfig(setup, configTomlPath);
+    writeAgentChattrConfig(setup, configTomlPath, { skipInstall: !agentChattrFound });
 
     // Step 5: Optional add-ons
     await setupAddons(rl, setup, configTomlPath);
