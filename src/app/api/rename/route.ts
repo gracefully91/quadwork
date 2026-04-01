@@ -31,6 +31,20 @@ function replaceInFile(filePath: string, oldStr: string, newStr: string): boolea
   }
 }
 
+function replaceInFileRegex(filePath: string, oldStr: string, newStr: string): boolean {
+  try {
+    if (!fs.existsSync(filePath)) return false;
+    const content = fs.readFileSync(filePath, "utf-8");
+    const escaped = oldStr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(`\\b${escaped}\\b`, "g");
+    if (!regex.test(content)) return false;
+    fs.writeFileSync(filePath, content.replace(regex, newStr));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // POST /api/rename — propagate name changes
 export async function POST(req: NextRequest) {
   const { type, projectId, oldName, newName, agentId } = await req.json();
@@ -92,17 +106,17 @@ export async function POST(req: NextRequest) {
           path.join(workDir, "config.toml"),
         ];
         for (const tomlPath of tomlPaths) {
-          if (replaceInFile(tomlPath, `label = "${oldDisplayName}`, `label = "${newName}`)) {
+          if (replaceInFile(tomlPath, `label = "${oldDisplayName}"`, `label = "${newName}"`)) {
             changes.push("agentchattr/config.toml");
             break;
           }
         }
       }
 
-      // Propagate to CLAUDE.md in working directory
+      // Propagate to CLAUDE.md in working directory (word-boundary-aware to avoid false positives)
       if (workDir) {
         const claudeMd = path.join(workDir, "CLAUDE.md");
-        if (replaceInFile(claudeMd, oldDisplayName, newName)) changes.push("CLAUDE.md");
+        if (replaceInFileRegex(claudeMd, oldDisplayName, newName)) changes.push("CLAUDE.md");
       }
 
       // Propagate to AGENTS.md files in agent worktree cwds

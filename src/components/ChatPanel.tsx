@@ -45,6 +45,16 @@ export default function ChatPanel() {
       .catch(() => setChattrUrl("http://127.0.0.1:8300"));
   }, []);
 
+  // Timeout fallback: if iframe hasn't loaded within 3s, switch to API mode
+  // (onError doesn't fire for CSP/X-Frame-Options blocks)
+  useEffect(() => {
+    if (mode !== "loading") return;
+    const timer = setTimeout(() => {
+      setMode((prev) => (prev === "loading" ? "api" : prev));
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [mode]);
+
   if (!chattrUrl) return null;
 
   if (mode === "loading" || mode === "iframe") {
@@ -264,7 +274,7 @@ function ChatPanelAPI() {
             if (e.key === "Escape") setShowMentions(false);
           }}
           placeholder={`Message #${channel}...`}
-          className="w-full bg-transparent px-3 py-2 text-[12px] text-text placeholder:text-text-muted outline-none focus:ring-1 focus:ring-accent"
+          className="w-full bg-transparent px-3 py-2 text-[12px] font-mono text-text placeholder:text-text-muted outline-none focus:ring-1 focus:ring-accent"
         />
       </div>
     </div>
