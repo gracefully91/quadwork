@@ -343,11 +343,14 @@ bridge_sender = "telegram-bridge"
         fs.appendFileSync(configTomlPath, telegramSection);
         ok("Added Telegram config to config.toml (token stored in .env)");
 
-        // Start Telegram bridge daemon
+        // Start Telegram bridge daemon with a resolved config (real token, chmod 600)
         const bridgeScript = path.join(telegramDir, "telegram_bridge.py");
         if (fs.existsSync(bridgeScript)) {
           log("Starting Telegram bridge...");
-          const bridgeProc = spawn("python3", [bridgeScript, "--config", configTomlPath], {
+          const bridgeToml = path.join(CONFIG_DIR, `telegram-${setup.projectName}.toml`);
+          const bridgeTomlContent = `[telegram]\nbot_token = "${botToken}"\nchat_id = "${chatId}"\n\n[agentchattr]\nurl = "http://127.0.0.1:8300"\n`;
+          fs.writeFileSync(bridgeToml, bridgeTomlContent, { mode: 0o600 });
+          const bridgeProc = spawn("python3", [bridgeScript, "--config", bridgeToml], {
             stdio: "ignore",
             detached: true,
           });
