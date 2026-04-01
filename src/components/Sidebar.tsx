@@ -115,22 +115,25 @@ export default function Sidebar() {
 
   // Health check poll every 5 seconds
   useEffect(() => {
+    let cancelled = false;
     let timeout: ReturnType<typeof setTimeout>;
     const check = async () => {
       try {
         const res = await fetch("/api/health", { signal: AbortSignal.timeout(3000) });
+        if (cancelled) return;
         if (res.ok) {
           setBackendStatus((prev) => prev === "offline" ? "recovering" : "online");
         } else {
           setBackendStatus("offline");
         }
       } catch {
+        if (cancelled) return;
         setBackendStatus("offline");
       }
-      timeout = setTimeout(check, 5000);
+      if (!cancelled) timeout = setTimeout(check, 5000);
     };
     check();
-    return () => clearTimeout(timeout);
+    return () => { cancelled = true; clearTimeout(timeout); };
   }, []);
 
   // Clear "recovering" state after brief flash
