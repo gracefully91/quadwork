@@ -530,17 +530,11 @@ function cmdStart() {
   const quadworkDir = path.join(__dirname, "..");
   const port = config.port || 8400;
 
-  // Build static frontend if out/ directory doesn't exist
+  // Check that the pre-built frontend exists
   const outDir = path.join(quadworkDir, "out");
   if (!fs.existsSync(outDir)) {
-    log("Building static frontend (first run)...");
-    try {
-      execSync("npm run build", { cwd: quadworkDir, stdio: "inherit" });
-      ok("Build complete");
-    } catch {
-      fail("Frontend build failed — fix build errors and retry");
-      process.exit(1);
-    }
+    warn("Frontend not found (out/ missing). API will work but UI won't load.");
+    warn("If running from source, run: npm run build");
   }
 
   // Start single Express server (serves API + WebSocket + static frontend)

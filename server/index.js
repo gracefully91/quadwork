@@ -360,9 +360,9 @@ if (fs.existsSync(outDir)) {
 }
 
 // SPA fallback: serve index.html for all non-API, non-WS routes
-app.get("*", (req, res) => {
-  if (req.path.startsWith("/api/")) {
-    return res.status(404).json({ error: "Not found" });
+app.use((req, res, next) => {
+  if (req.method !== "GET" || req.path.startsWith("/api/")) {
+    return next();
   }
   const indexPath = path.join(outDir, "index.html");
   if (fs.existsSync(indexPath)) {
