@@ -45,16 +45,43 @@ export default function ChatPanel() {
       .catch(() => setChattrUrl("http://127.0.0.1:8300"));
   }, []);
 
+  // Timeout fallback: if iframe hasn't loaded within 3s, switch to API mode
+  // (onError doesn't fire for CSP/X-Frame-Options blocks)
+  useEffect(() => {
+    if (mode !== "loading") return;
+    const timer = setTimeout(() => {
+      setMode((prev) => (prev === "loading" ? "api" : prev));
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [mode]);
+
   if (!chattrUrl) return null;
 
   if (mode === "loading" || mode === "iframe") {
     return (
       <div className="w-full h-full">
         <iframe
+          ref={(el) => {
+            if (!el) return;
+            el.onload = () => {
+              // onLoad fires even for CSP/X-Frame-Options blocks.
+              // Try accessing contentDocument — blocked iframes throw.
+              try {
+                const doc = el.contentDocument || el.contentWindow?.document;
+                if (doc && doc.body && doc.body.innerHTML.length > 0) {
+                  setMode("iframe");
+                } else {
+                  setMode("api");
+                }
+              } catch {
+                // Cross-origin or blocked — fall back to API
+                setMode("api");
+              }
+            };
+            el.onerror = () => setMode("api");
+          }}
           src={chattrUrl}
           className="w-full h-full border-0"
-          onLoad={() => setMode("iframe")}
-          onError={() => setMode("api")}
           style={{ display: mode === "loading" ? "none" : "block" }}
           sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
         />
@@ -264,7 +291,7 @@ function ChatPanelAPI() {
             if (e.key === "Escape") setShowMentions(false);
           }}
           placeholder={`Message #${channel}...`}
-          className="w-full bg-transparent px-3 py-2 text-[12px] text-text placeholder:text-text-muted outline-none focus:ring-1 focus:ring-accent"
+          className="w-full bg-transparent px-3 py-2 text-[12px] font-mono text-text placeholder:text-text-muted outline-none focus:ring-1 focus:ring-accent"
         />
       </div>
     </div>
