@@ -119,25 +119,36 @@ function ChatPanelAPI({ projectId }: { projectId?: string }) {
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const shouldAutoScroll = useRef(true);
+  const authRetryRef = useRef(0);
 
-  // Fetch channels via proxy
+  // Fetch channels via proxy (with 403 retry for token sync race)
   useEffect(() => {
-    fetch(`/api/chat?path=/api/channels${projectId ? `&project=${encodeURIComponent(projectId)}` : ""}`)
-      .then((r) => {
-        if (r.status === 403) {
-          setAuthError("Chat authentication failed (403). Set agentchattr_token in Settings or ~/.quadwork/config.json.");
-          throw new Error("auth failed");
-        }
-        if (!r.ok) throw new Error("channels fetch failed");
-        return r.json();
-      })
-      .then((data) => {
-        setAuthError(null);
-        const list = Array.isArray(data) ? data : data.channels || [];
-        setChannels(list.map((c: string | { name: string }) => (typeof c === "string" ? c : c.name)));
-      })
-      .catch(() => setChannels(["general"]));
-  }, []);
+    const fetchChannels = () => {
+      fetch(`/api/chat?path=/api/channels${projectId ? `&project=${encodeURIComponent(projectId)}` : ""}`)
+        .then((r) => {
+          if (r.status === 403) {
+            if (authRetryRef.current < 3) {
+              authRetryRef.current++;
+              setTimeout(fetchChannels, 2000);
+              return;
+            }
+            setAuthError("Chat authentication failed (403). Set agentchattr_token in Settings or ~/.quadwork/config.json.");
+            throw new Error("auth failed");
+          }
+          if (!r.ok) throw new Error("channels fetch failed");
+          return r.json();
+        })
+        .then((data) => {
+          if (!data) return;
+          setAuthError(null);
+          authRetryRef.current = 0;
+          const list = Array.isArray(data) ? data : data.channels || [];
+          setChannels(list.map((c: string | { name: string }) => (typeof c === "string" ? c : c.name)));
+        })
+        .catch(() => setChannels(["general"]));
+    };
+    fetchChannels();
+  }, [projectId]);
 
   // Reset cursor when channel changes
   useEffect(() => {
@@ -150,7 +161,9 @@ function ChatPanelAPI({ projectId }: { projectId?: string }) {
     fetch(`/api/chat?path=/api/messages&channel=${encodeURIComponent(channel)}&cursor=${cursorRef.current}${projectId ? `&project=${encodeURIComponent(projectId)}` : ""}`)
       .then((r) => {
         if (r.status === 403) {
-          setAuthError("Chat authentication failed (403). Set agentchattr_token in Settings or ~/.quadwork/config.json.");
+          // Token may still be syncing — clear error on next successful poll
+          if (authRetryRef.current < 3) setAuthError(null);
+          else setAuthError("Chat authentication failed (403). Set agentchattr_token in Settings or ~/.quadwork/config.json.");
           throw new Error("auth failed");
         }
         if (!r.ok) throw new Error(`Poll failed: ${r.status}`);
