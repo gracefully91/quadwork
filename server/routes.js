@@ -580,10 +580,11 @@ router.post("/api/setup", (req, res) => {
       const colors = ["#10a37f", "#22c55e", "#f59e0b", "#da7756"];
       const labels = ["Owner", "Reviewer", "Reviewer", "Builder"];
 
-      // Read saved token for this project (if available)
+      // Read or generate token for this project
+      const crypto = require("crypto");
       const savedCfg = readConfigFile();
       const savedProject = savedCfg.projects?.find((p) => p.id === dirName);
-      const sessionToken = body.agentchattr_token || savedProject?.agentchattr_token || "";
+      const sessionToken = body.agentchattr_token || savedProject?.agentchattr_token || crypto.randomBytes(16).toString("hex");
 
       let content = `[meta]\nname = "${displayName}"\n\n`;
       content += `[server]\nport = ${chattrPort}\nhost = "127.0.0.1"\ndata_dir = "${dataDir}"\n`;
@@ -602,7 +603,7 @@ router.post("/api/setup", (req, res) => {
         const qwPort = cfg.port || 8400;
         fetch(`http://127.0.0.1:${qwPort}/api/agentchattr/${encodeURIComponent(dirName)}/restart`, { method: "POST" }).catch(() => {});
       } catch {}
-      return res.json({ ok: true, path: tomlPath });
+      return res.json({ ok: true, path: tomlPath, agentchattr_token: sessionToken, agentchattr_port: chattrPort, mcp_http_port: mcp_http, mcp_sse_port: mcp_sse });
     }
     case "add-config": {
       const { id, name, repo, workingDir, backends } = body;
@@ -621,20 +622,26 @@ router.post("/api/setup", (req, res) => {
           command: (backends && backends[agentId]) || "claude",
         };
       }
-      // Auto-assign per-project AgentChattr and MCP ports (scan existing to avoid collisions)
-      const usedChattrPorts = new Set(cfg.projects.map((p) => {
-        try { return parseInt(new URL(p.agentchattr_url).port, 10); } catch { return 0; }
-      }).filter(Boolean));
-      const usedMcpPorts = new Set(cfg.projects.flatMap((p) => [p.mcp_http_port, p.mcp_sse_port]).filter(Boolean));
-      let chattrPort = 8300;
-      while (usedChattrPorts.has(chattrPort)) chattrPort++;
-      let mcp_http_port = 8200;
-      while (usedMcpPorts.has(mcp_http_port)) mcp_http_port++;
-      let mcp_sse_port = mcp_http_port + 1;
-      while (usedMcpPorts.has(mcp_sse_port)) mcp_sse_port++;
-      // Auto-generate per-project session token
+      // Use pre-assigned ports/token from agentchattr-config step if provided,
+      // otherwise auto-assign (direct add-config without prior agentchattr-config)
       const crypto = require("crypto");
-      const agentchattr_token = crypto.randomBytes(16).toString("hex");
+      let chattrPort = body.agentchattr_port;
+      let mcp_http_port = body.mcp_http_port;
+      let mcp_sse_port = body.mcp_sse_port;
+      let agentchattr_token = body.agentchattr_token;
+      if (!chattrPort) {
+        const usedChattrPorts = new Set(cfg.projects.map((p) => {
+          try { return parseInt(new URL(p.agentchattr_url).port, 10); } catch { return 0; }
+        }).filter(Boolean));
+        const usedMcpPorts = new Set(cfg.projects.flatMap((p) => [p.mcp_http_port, p.mcp_sse_port]).filter(Boolean));
+        chattrPort = 8300;
+        while (usedChattrPorts.has(chattrPort)) chattrPort++;
+        mcp_http_port = 8200;
+        while (usedMcpPorts.has(mcp_http_port)) mcp_http_port++;
+        mcp_sse_port = mcp_http_port + 1;
+        while (usedMcpPorts.has(mcp_sse_port)) mcp_sse_port++;
+      }
+      if (!agentchattr_token) agentchattr_token = crypto.randomBytes(16).toString("hex");
       cfg.projects.push({
         id, name, repo, working_dir: workingDir, agents,
         agentchattr_url: `http://127.0.0.1:${chattrPort}`,

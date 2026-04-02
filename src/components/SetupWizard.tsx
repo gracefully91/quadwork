@@ -38,6 +38,8 @@ export default function SetupWizard() {
   // Form state
   const [projectName, setProjectName] = useState("");
   const [repo, setRepo] = useState("");
+  // Per-project AgentChattr config (populated by agentchattr-config step)
+  const [chattrConfig, setChattrConfig] = useState<{ agentchattr_token?: string; agentchattr_port?: number; mcp_http_port?: number; mcp_sse_port?: number }>({});
   const [backends, setBackends] = useState<Record<string, string>>({
     head: "claude", reviewer1: "claude", reviewer2: "claude", dev: "claude",
   });
@@ -112,7 +114,7 @@ export default function SetupWizard() {
   const saveConfig = async () => {
     // Use directory basename as project ID (matches CLI wizard)
     const id = workingDir.split("/").pop() || projectName.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
-    const result = await apiCall("add-config", { id, name: projectName, repo, workingDir, backends });
+    const result = await apiCall("add-config", { id, name: projectName, repo, workingDir, backends, ...chattrConfig });
     if (result.ok) {
       updateStep(currentStep, { status: "done" });
       setTimeout(() => router.push(`/project/${id}`), 500);
@@ -334,8 +336,10 @@ export default function SetupWizard() {
                       }
                     } catch {}
                     const result = await apiCall("agentchattr-config", { workingDir, projectName, repo, backends, agentchattr_port, mcp_http_port, mcp_sse_port });
-                    if (result.ok) goNext();
-                    else updateStep(currentStep, { status: "error", error: result.error });
+                    if (result.ok) {
+                      setChattrConfig({ agentchattr_token: result.agentchattr_token, agentchattr_port: result.agentchattr_port, mcp_http_port: result.mcp_http_port, mcp_sse_port: result.mcp_sse_port });
+                      goNext();
+                    } else updateStep(currentStep, { status: "error", error: result.error });
                   }}
                   disabled={loading}
                   className="px-4 py-1.5 bg-accent text-bg text-[12px] font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50"
