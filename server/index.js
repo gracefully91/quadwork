@@ -25,6 +25,50 @@ app.get("/api/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
+// --- Caffeinate (sleep prevention) ---
+
+let caffeinateProcess = { process: null, pid: null, startedAt: null, duration: null };
+
+app.post("/api/caffeinate/start", (req, res) => {
+  if (process.platform !== "darwin") {
+    return res.status(400).json({ ok: false, error: "Sleep prevention is only available on macOS" });
+  }
+  // Kill existing if running
+  if (caffeinateProcess.process) {
+    try { caffeinateProcess.process.kill("SIGTERM"); } catch {}
+  }
+  const duration = req.body?.duration || 0; // seconds, 0 = indefinite
+  const args = ["-d", "-i", "-s"];
+  if (duration > 0) args.push("-t", String(duration));
+  const child = spawn("caffeinate", args, { stdio: "ignore", detached: true });
+  child.unref();
+  child.on("exit", () => {
+    if (caffeinateProcess.process === child) {
+      caffeinateProcess = { process: null, pid: null, startedAt: null, duration: null };
+    }
+  });
+  caffeinateProcess = { process: child, pid: child.pid, startedAt: Date.now(), duration: duration || null };
+  res.json({ ok: true, active: true, pid: child.pid, duration });
+});
+
+app.post("/api/caffeinate/stop", (_req, res) => {
+  if (caffeinateProcess.process) {
+    try { caffeinateProcess.process.kill("SIGTERM"); } catch {}
+  }
+  caffeinateProcess = { process: null, pid: null, startedAt: null, duration: null };
+  res.json({ ok: true, active: false });
+});
+
+app.get("/api/caffeinate/status", (_req, res) => {
+  const active = !!(caffeinateProcess.process && caffeinateProcess.pid);
+  let remaining = null;
+  if (active && caffeinateProcess.duration && caffeinateProcess.startedAt) {
+    const elapsed = Math.floor((Date.now() - caffeinateProcess.startedAt) / 1000);
+    remaining = Math.max(0, caffeinateProcess.duration - elapsed);
+  }
+  res.json({ active, pid: caffeinateProcess.pid, remaining, platform: process.platform });
+});
+
 // --- Unified agent sessions ---
 // Single map: key = "project/agent" → { projectId, agentId, term, ws, state, error }
 // PTY (term) is the source of truth for "running". WS is optional (attaches to view terminal).

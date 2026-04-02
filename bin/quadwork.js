@@ -882,6 +882,18 @@ function cmdStop() {
 
   if (stopPid("Server", "server.pid")) stopped++;
 
+  // Stop caffeinate if running (send stop to API before server dies, or kill by PID)
+  if (process.platform === "darwin") {
+    try {
+      const result = run("pgrep -f 'caffeinate -d -i -s'");
+      if (result) {
+        run(`kill ${result.split("\n")[0]}`);
+        ok("Stopped caffeinate (sleep prevention)");
+        stopped++;
+      }
+    } catch {}
+  }
+
   if (stopped === 0) warn("No running processes found");
   else ok(`Stopped ${stopped} process(es)`);
   log("");
