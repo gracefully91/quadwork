@@ -456,6 +456,73 @@ function exec(cmd, args, opts) {
   }
 }
 
+// ─── GitHub helpers for Setup Wizard ──────────────────────────────────────
+
+// GitHub user info
+router.get("/api/github/user", (_req, res) => {
+  try {
+    const out = execFileSync("gh", ["api", "user", "--jq", "{login: .login}"], { encoding: "utf-8", timeout: 10000 });
+    res.json(JSON.parse(out));
+  } catch {
+    res.status(502).json({ error: "GitHub CLI not authenticated" });
+  }
+});
+
+// GitHub repo list for an owner (only repos with push access)
+router.get("/api/github/repos", (req, res) => {
+  const owner = req.query.owner;
+  if (!owner) return res.status(400).json({ error: "Missing owner" });
+  try {
+    const out = execFileSync("gh", ["repo", "list", String(owner), "--json", "name,description,isPrivate,viewerPermission", "--limit", "50"], { encoding: "utf-8", timeout: 15000 });
+    const repos = JSON.parse(out);
+    // Filter to repos with push access (ADMIN, MAINTAIN, WRITE)
+    const pushAccess = new Set(["ADMIN", "MAINTAIN", "WRITE"]);
+    res.json(repos.filter((r) => pushAccess.has(r.viewerPermission)));
+  } catch {
+    res.json([]);
+  }
+});
+
+// Auto-detect existing clone of a repo
+router.get("/api/setup/detect-clone", (req, res) => {
+  const repoName = req.query.repo; // "owner/repo"
+  if (!repoName) return res.status(400).json({ error: "Missing repo" });
+  const slug = String(repoName).split("/").pop();
+  const home = os.homedir();
+  const searchDirs = [
+    path.join(home, "Projects"),
+    path.join(home, "Developer"),
+    path.join(home, "repos"),
+    path.join(home, "code"),
+    path.join(home, "src"),
+    path.join(home, "workspace"),
+    home,
+  ];
+  for (const dir of searchDirs) {
+    const candidate = path.join(dir, slug);
+    if (fs.existsSync(path.join(candidate, ".git"))) {
+      return res.json({ found: true, path: candidate, suggested: path.join(searchDirs[0], slug) });
+    }
+  }
+  // Not found — suggest a default location
+  const defaultDir = fs.existsSync(searchDirs[0]) ? searchDirs[0] : home;
+  return res.json({ found: false, path: null, suggested: path.join(defaultDir, slug) });
+});
+
+// Save reviewer token securely
+router.post("/api/setup/save-token", (req, res) => {
+  const { token } = req.body;
+  if (!token) return res.status(400).json({ error: "Missing token" });
+  const tokenPath = path.join(os.homedir(), ".quadwork", "reviewer-token");
+  const dir = path.dirname(tokenPath);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(tokenPath, token.trim() + "\n", { mode: 0o600 });
+  try { fs.chmodSync(tokenPath, 0o600); } catch {}
+  res.json({ ok: true, path: tokenPath });
+});
+
+// ─── Setup Wizard ─────────────────────────────────────────────────────────
+
 router.post("/api/setup", (req, res) => {
   const step = req.query.step;
   const body = req.body || {};
@@ -464,8 +531,16 @@ router.post("/api/setup", (req, res) => {
     case "verify-repo": {
       const repo = body.repo;
       if (!repo || !REPO_RE.test(repo)) return res.json({ ok: false, error: "Invalid repo format (use owner/repo)" });
-      const result = exec("gh", ["repo", "view", repo, "--json", "name,owner"]);
-      return res.json({ ok: result.ok, error: result.ok ? undefined : "Cannot access repo. Check gh auth and repo permissions." });
+      const result = exec("gh", ["repo", "view", repo, "--json", "name,owner,viewerPermission"]);
+      if (!result.ok) return res.json({ ok: false, error: "Cannot access repo. Check gh auth and repo permissions." });
+      try {
+        const info = JSON.parse(result.output);
+        const pushAccess = new Set(["ADMIN", "MAINTAIN", "WRITE"]);
+        if (!pushAccess.has(info.viewerPermission)) {
+          return res.json({ ok: false, error: "You don't have push access to this repo. Agents need push access to create branches and PRs." });
+        }
+      } catch {}
+      return res.json({ ok: true });
     }
     case "create-worktrees": {
       const workingDir = body.workingDir;
@@ -543,6 +618,20 @@ router.post("/api/setup", (req, res) => {
             fs.writeFileSync(claudeMd, `# ${dirName}\n\nBranch: task/<issue>-<slug>\nCommit: [#<issue>] Short description\nNever push to main.\n`);
           }
           seeded.push(`${agent}/CLAUDE.md`);
+        }
+
+        // .gitignore — ensure token files are never committed
+        const gitignorePath = path.join(wtDir, ".gitignore");
+        const tokenIgnorePatterns = "reviewer-token\n*-token\n";
+        if (!fs.existsSync(gitignorePath)) {
+          fs.writeFileSync(gitignorePath, tokenIgnorePatterns);
+          seeded.push(`${agent}/.gitignore`);
+        } else {
+          const existing = fs.readFileSync(gitignorePath, "utf-8");
+          if (!existing.includes("*-token")) {
+            fs.appendFileSync(gitignorePath, "\n" + tokenIgnorePatterns);
+            seeded.push(`${agent}/.gitignore (updated)`);
+          }
         }
       }
       return res.json({ ok: true, seeded });

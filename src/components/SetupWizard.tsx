@@ -1,34 +1,139 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+
+/* ── Types ─────────────────────────────────────────────────────────────── */
 
 type StepStatus = "pending" | "active" | "done" | "error" | "skipped";
 
 interface Step {
   id: string;
   label: string;
+  subtitle: string;
   status: StepStatus;
   error?: string;
-  optional?: boolean;
 }
 
+interface Repo {
+  name: string;
+  description?: string;
+  isPrivate?: boolean;
+}
+
+/* ── Constants ─────────────────────────────────────────────────────────── */
+
 const INITIAL_STEPS: Step[] = [
-  { id: "name", label: "Project Name", status: "active" },
-  { id: "repo", label: "GitHub Repo", status: "pending" },
-  { id: "protection", label: "Branch Protection", status: "pending", optional: true },
-  { id: "backend", label: "CLI Backend", status: "pending" },
-  { id: "workdir", label: "Working Directory", status: "pending" },
-  { id: "worktrees", label: "Worktree Setup", status: "pending" },
-  { id: "seeds", label: "Seed Files", status: "pending" },
-  { id: "agentchattr", label: "AgentChattr Config", status: "pending", optional: true },
-  { id: "config", label: "Save Config", status: "pending" },
+  { id: "name", label: "Project Name", subtitle: "Name your project", status: "active" },
+  { id: "repo", label: "GitHub Repo", subtitle: "Connect a repository", status: "pending" },
+  { id: "models", label: "Agent Models", subtitle: "Configure CLI backends", status: "pending" },
+  { id: "workdir", label: "Working Directory", subtitle: "Set the local path", status: "pending" },
+  { id: "workspaces", label: "Create Workspaces", subtitle: "Worktrees + seed files", status: "pending" },
+  { id: "launch", label: "Ready to Launch", subtitle: "Review & start", status: "pending" },
 ];
 
 const BACKENDS: { value: string; label: string }[] = [
   { value: "claude", label: "Claude Code" },
   { value: "codex", label: "Codex" },
 ];
+
+const AGENTS = [
+  { key: "head", label: "T1 — Head", role: "Owner / Final Guard", desc: "Merges PRs, makes final calls" },
+  { key: "reviewer1", label: "T2a — Reviewer 1", role: "Design Reviewer", desc: "Reviews architecture & design" },
+  { key: "reviewer2", label: "T2b — Reviewer 2", role: "Code Reviewer", desc: "Reviews implementation quality" },
+  { key: "dev", label: "T3 — Developer", role: "Full-Stack Builder", desc: "Implements features & fixes" },
+];
+
+/* ── Component ─────────────────────────────────────────────────────────── */
+
+function WorkdirStep({ repo, workingDir, setWorkingDir, error, onNext }: {
+  repo: string; workingDir: string; setWorkingDir: (v: string) => void; error?: string; onNext: () => void;
+}) {
+  const [detecting, setDetecting] = useState(true);
+  const [detected, setDetected] = useState<{ found: boolean; path: string | null; suggested: string } | null>(null);
+  const [showManual, setShowManual] = useState(false);
+  const slug = repo ? repo.split("/")[1] : "project";
+
+  useEffect(() => {
+    if (!repo) { setDetecting(false); return; }
+    fetch(`/api/setup/detect-clone?repo=${encodeURIComponent(repo)}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        setDetected(data);
+        if (data?.found && data.path) setWorkingDir(data.path);
+        else if (data?.suggested) setWorkingDir(data.suggested);
+        setDetecting(false);
+      })
+      .catch(() => setDetecting(false));
+  }, [repo, setWorkingDir]);
+
+  return (
+    <div>
+      <h2 className="text-sm font-semibold text-text mb-1">Where is your project?</h2>
+      <p className="text-[11px] text-text-muted mb-3">
+        Your project&apos;s git repository on your local machine. QuadWork will create 4 agent workspaces next to this directory.
+      </p>
+
+      {detecting && <p className="text-[11px] text-text-muted mb-3">Scanning for existing clone...</p>}
+
+      {!detecting && detected?.found && (
+        <div className="border border-accent/30 bg-accent/5 p-3 mb-4 text-[11px]">
+          <p className="text-accent font-semibold mb-1">Found existing clone</p>
+          <p className="text-text font-mono">{detected.path}</p>
+          <div className="flex gap-2 mt-2">
+            <button onClick={onNext} className="px-3 py-1 bg-accent text-bg text-[11px] font-semibold hover:bg-accent-dim transition-colors">
+              Use this
+            </button>
+            <button onClick={() => { setShowManual(true); setWorkingDir(""); }} className="px-3 py-1 text-[11px] text-text-muted border border-border hover:text-text transition-colors">
+              Choose different path
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!detecting && !detected?.found && !showManual && (
+        <div className="border border-border bg-bg-surface p-3 mb-4 text-[11px]">
+          <p className="text-text-muted mb-1">No local clone found for <span className="text-accent">{repo}</span></p>
+          <p className="text-text-muted mb-2">Setup will clone it to:</p>
+          <p className="text-text font-mono mb-2">{detected?.suggested || `~/Projects/${slug}`}</p>
+          <div className="flex gap-2">
+            <button onClick={onNext} disabled={!workingDir.trim()} className="px-3 py-1 bg-accent text-bg text-[11px] font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
+              Clone here & continue
+            </button>
+            <button onClick={() => setShowManual(true)} className="px-3 py-1 text-[11px] text-text-muted border border-border hover:text-text transition-colors">
+              Choose different path
+            </button>
+          </div>
+        </div>
+      )}
+
+      {(showManual || (!detecting && !detected)) && (
+        <>
+          <input
+            value={workingDir}
+            onChange={(e) => setWorkingDir(e.target.value)}
+            placeholder={`~/Projects/${slug}`}
+            className="w-full bg-transparent border border-border px-2 py-1.5 text-[12px] text-text outline-none focus:border-accent mb-2"
+          />
+          <button onClick={onNext} disabled={!workingDir.trim()} className="px-4 py-1.5 bg-accent text-bg text-[12px] font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
+            Next
+          </button>
+        </>
+      )}
+
+      {error && <p className="text-[11px] text-error mt-2">{error}</p>}
+
+      <div className="border border-border bg-bg-surface p-3 mt-4 text-[11px] text-text-muted font-mono space-y-0.5">
+        <p className="text-[10px] uppercase tracking-wider text-text-muted mb-1 font-sans">Workspace layout</p>
+        <p className="text-accent">{slug}/              &larr; your repo</p>
+        <p>{slug}-head/         &larr; Head agent</p>
+        <p>{slug}-dev/          &larr; Dev agent</p>
+        <p>{slug}-reviewer1/    &larr; Reviewer1</p>
+        <p>{slug}-reviewer2/    &larr; Reviewer2</p>
+      </div>
+    </div>
+  );
+}
 
 export default function SetupWizard() {
   const router = useRouter();
@@ -38,37 +143,57 @@ export default function SetupWizard() {
   // Form state
   const [projectName, setProjectName] = useState("");
   const [repo, setRepo] = useState("");
-  // Per-project AgentChattr config (populated by agentchattr-config step)
-  const [chattrConfig, setChattrConfig] = useState<{ agentchattr_token?: string; agentchattr_port?: number; mcp_http_port?: number; mcp_sse_port?: number }>({});
+  const [repoSearch, setRepoSearch] = useState("");
+  const [repos, setRepos] = useState<Repo[]>([]);
+  const [reposLoading, setReposLoading] = useState(false);
+  const [repoManual, setRepoManual] = useState(false);
+  const [ghUser, setGhUser] = useState("");
+  const [enableProtection, setEnableProtection] = useState(false);
   const [backends, setBackends] = useState<Record<string, string>>({
     head: "claude", reviewer1: "claude", reviewer2: "claude", dev: "claude",
   });
-  const [workingDir, setWorkingDir] = useState("");
+  const [showReviewerCreds, setShowReviewerCreds] = useState(false);
   const [reviewerUser, setReviewerUser] = useState("");
-  const [reviewerTokenPath, setReviewerTokenPath] = useState("");
+  const [reviewerTokenMode, setReviewerTokenMode] = useState<"paste" | "file">("paste");
+  const [reviewerTokenValue, setReviewerTokenValue] = useState("");
+  const [reviewerTokenPath, setReviewerTokenPath] = useState("~/.quadwork/reviewer-token");
+  const [workingDir, setWorkingDir] = useState("");
+  const [chattrConfig, setChattrConfig] = useState<{ agentchattr_token?: string; agentchattr_port?: number; mcp_http_port?: number; mcp_sse_port?: number }>({});
   const [loading, setLoading] = useState(false);
+  const [workspaceLog, setWorkspaceLog] = useState<string[]>([]);
+  const [launchStatus, setLaunchStatus] = useState<"idle" | "running" | "done" | "error">("idle");
 
-  const updateStep = (idx: number, updates: Partial<Step>) => {
+  // Fetch GitHub user on mount
+  useEffect(() => {
+    fetch("/api/github/user")
+      .then((r) => r.json())
+      .then((d) => { if (d.login) setGhUser(d.login); })
+      .catch(() => {});
+  }, []);
+
+  // Fetch repos when ghUser is set
+  useEffect(() => {
+    if (!ghUser) return;
+    setReposLoading(true);
+    fetch(`/api/github/repos?owner=${encodeURIComponent(ghUser)}`)
+      .then((r) => r.json())
+      .then((d) => { if (Array.isArray(d)) setRepos(d); })
+      .catch(() => {})
+      .finally(() => setReposLoading(false));
+  }, [ghUser]);
+
+  const updateStep = useCallback((idx: number, updates: Partial<Step>) => {
     setSteps((prev) => prev.map((s, i) => (i === idx ? { ...s, ...updates } : s)));
-  };
+  }, []);
 
-  const goNext = () => {
-    updateStep(currentStep, { status: "done" });
-    const next = currentStep + 1;
-    if (next < steps.length) {
-      updateStep(next, { status: "active" });
-      setCurrentStep(next);
-    }
-  };
-
-  const skipStep = () => {
-    updateStep(currentStep, { status: "skipped" });
-    const next = currentStep + 1;
-    if (next < steps.length) {
-      updateStep(next, { status: "active" });
-      setCurrentStep(next);
-    }
-  };
+  const goNext = useCallback(() => {
+    setSteps((prev) => prev.map((s, i) => {
+      if (i === currentStep) return { ...s, status: "done" as StepStatus };
+      if (i === currentStep + 1) return { ...s, status: "active" as StepStatus };
+      return s;
+    }));
+    setCurrentStep((c) => c + 1);
+  }, [currentStep]);
 
   const apiCall = async (step: string, body: Record<string, unknown>) => {
     setLoading(true);
@@ -87,6 +212,7 @@ export default function SetupWizard() {
     }
   };
 
+  // Step: verify repo
   const verifyRepo = async () => {
     const result = await apiCall("verify-repo", { repo });
     if (result.ok) {
@@ -96,286 +222,546 @@ export default function SetupWizard() {
     }
   };
 
-  const createWorktrees = async () => {
-    const result = await apiCall("create-worktrees", { workingDir, repo });
-    if (result.ok) {
-      goNext();
-    } else {
-      updateStep(currentStep, { status: "error", error: result.errors?.join(", ") || result.error });
+  // Step: create workspaces (worktrees + seed files in sequence)
+  const createWorkspaces = async () => {
+    setLoading(true);
+    setWorkspaceLog([]);
+
+    // Save reviewer token first if pasted
+    if (showReviewerCreds && reviewerTokenMode === "paste" && reviewerTokenValue) {
+      setWorkspaceLog((l) => [...l, "Saving reviewer token..."]);
+      try {
+        const tokenRes = await fetch("/api/setup/save-token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: reviewerTokenValue }),
+        });
+        const tokenData = await tokenRes.json();
+        if (tokenData.ok) {
+          setWorkspaceLog((l) => [...l, `Token saved to ${tokenData.path}`]);
+        }
+      } catch {}
     }
+
+    // 1. Create worktrees
+    setWorkspaceLog((l) => [...l, "Creating worktrees..."]);
+    const wtResult = await apiCall("create-worktrees", { workingDir, repo });
+    if (!wtResult.ok) {
+      setWorkspaceLog((l) => [...l, `Error: ${wtResult.errors?.join(", ") || wtResult.error}`]);
+      updateStep(currentStep, { status: "error", error: wtResult.errors?.join(", ") || wtResult.error });
+      setLoading(false);
+      return;
+    }
+    setWorkspaceLog((l) => [...l, "Worktrees created."]);
+
+    // 2. Seed files
+    setWorkspaceLog((l) => [...l, "Writing seed files..."]);
+    const effectiveTokenPath = showReviewerCreds
+      ? (reviewerTokenMode === "file" ? reviewerTokenPath : "~/.quadwork/reviewer-token")
+      : "";
+    const seedResult = await apiCall("seed-files", {
+      workingDir,
+      projectName,
+      repo,
+      reviewerUser: showReviewerCreds ? reviewerUser : "",
+      reviewerTokenPath: effectiveTokenPath,
+    });
+    if (!seedResult.ok) {
+      setWorkspaceLog((l) => [...l, `Error: ${seedResult.error}`]);
+      updateStep(currentStep, { status: "error", error: seedResult.error });
+      setLoading(false);
+      return;
+    }
+    setWorkspaceLog((l) => [...l, "Seed files written."]);
+    setWorkspaceLog((l) => [...l, "Done."]);
+    setLoading(false);
+    goNext();
   };
 
-  const seedFiles = async () => {
-    const result = await apiCall("seed-files", { workingDir, projectName, repo, reviewerUser, reviewerTokenPath });
-    if (result.ok) goNext();
-    else updateStep(currentStep, { status: "error", error: result.error });
-  };
+  // Step: launch (agentchattr-config + add-config + redirect)
+  const launchProject = async () => {
+    setLaunchStatus("running");
 
-  const saveConfig = async () => {
-    // Use directory basename as project ID (matches CLI wizard)
+    // 1. AgentChattr config
+    let agentchattr_port = 8300, mcp_http_port = 8200, mcp_sse_port = 8201;
+    try {
+      const cfgRes = await fetch("/api/config");
+      if (cfgRes.ok) {
+        const cfg = await cfgRes.json();
+        const usedChattr = new Set((cfg.projects || []).map((p: { agentchattr_url?: string }) => {
+          try { return parseInt(new URL(p.agentchattr_url || "").port, 10); } catch { return 0; }
+        }).filter(Boolean));
+        const usedMcp = new Set((cfg.projects || []).flatMap((p: { mcp_http_port?: number; mcp_sse_port?: number }) => [p.mcp_http_port, p.mcp_sse_port]).filter(Boolean));
+        while (usedChattr.has(agentchattr_port)) agentchattr_port++;
+        while (usedMcp.has(mcp_http_port)) mcp_http_port++;
+        mcp_sse_port = mcp_http_port + 1;
+        while (usedMcp.has(mcp_sse_port)) mcp_sse_port++;
+      }
+    } catch {}
+
+    const chattrResult = await apiCall("agentchattr-config", {
+      workingDir, projectName, repo, backends,
+      agentchattr_port, mcp_http_port, mcp_sse_port,
+    });
+    if (chattrResult.ok) {
+      setChattrConfig({
+        agentchattr_token: chattrResult.agentchattr_token,
+        agentchattr_port: chattrResult.agentchattr_port,
+        mcp_http_port: chattrResult.mcp_http_port,
+        mcp_sse_port: chattrResult.mcp_sse_port,
+      });
+    }
+
+    // 2. Save config
     const id = workingDir.split("/").pop() || projectName.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
-    const result = await apiCall("add-config", { id, name: projectName, repo, workingDir, backends, ...chattrConfig });
-    if (result.ok) {
+    const configResult = await apiCall("add-config", {
+      id, name: projectName, repo, workingDir, backends,
+      ...(chattrResult.ok ? {
+        agentchattr_token: chattrResult.agentchattr_token,
+        agentchattr_port: chattrResult.agentchattr_port,
+        mcp_http_port: chattrResult.mcp_http_port,
+        mcp_sse_port: chattrResult.mcp_sse_port,
+      } : chattrConfig),
+    });
+
+    if (configResult.ok) {
+      setLaunchStatus("done");
       updateStep(currentStep, { status: "done" });
-      setTimeout(() => router.push(`/project/${id}`), 500);
+      setTimeout(() => router.push(`/project/${id}`), 1200);
     } else {
-      updateStep(currentStep, { status: "error", error: result.error });
+      setLaunchStatus("error");
+      updateStep(currentStep, { status: "error", error: configResult.error });
     }
   };
+
+  const filteredRepos = repos.filter((r) =>
+    r.name.toLowerCase().includes(repoSearch.toLowerCase())
+  );
 
   const step = steps[currentStep];
 
+  /* ── Render ────────────────────────────────────────────────────────────── */
+
   return (
-    <div className="h-full overflow-y-auto p-6 max-w-4xl">
-      <h1 className="text-lg font-semibold text-text tracking-tight mb-6">New Project Setup</h1>
+    <div className="h-full overflow-y-auto">
+      {/* Header */}
+      <div className="px-6 pt-6 pb-4 border-b border-border">
+        <h1 className="text-lg font-semibold text-text tracking-tight">
+          Set Up Your AI Dev Team
+        </h1>
+        <p className="text-[11px] text-text-muted mt-1">
+          Configure agents, connect your repo, and launch a multi-agent development workflow in minutes.
+        </p>
+      </div>
 
-      <div className="flex gap-8">
-        {/* Step indicator */}
-        <div className="w-48 shrink-0">
-          {steps.map((s, i) => (
-            <div key={s.id} className="flex items-center gap-2 py-1.5">
-              <span className={`w-5 h-5 flex items-center justify-center text-[10px] border ${
-                s.status === "done" ? "border-accent text-accent" :
-                s.status === "error" ? "border-error text-error" :
-                s.status === "active" ? "border-accent text-accent bg-accent/10" :
-                s.status === "skipped" ? "border-border text-text-muted line-through" :
-                "border-border text-text-muted"
-              }`}>
-                {s.status === "done" ? "✓" : s.status === "error" ? "!" : s.status === "skipped" ? "—" : i + 1}
-              </span>
-              <span className={`text-[11px] ${
-                s.status === "active" ? "text-text font-semibold" :
-                s.status === "done" ? "text-accent" :
-                "text-text-muted"
-              }`}>
-                {s.label}
-              </span>
-            </div>
-          ))}
-        </div>
-
-        {/* Step content */}
-        <div className="flex-1 border border-border p-4">
-          {step?.id === "name" && (
-            <div>
-              <h2 className="text-sm font-semibold text-text mb-3">Project Name</h2>
-              <input
-                value={projectName}
-                onChange={(e) => setProjectName(e.target.value)}
-                placeholder="My Project"
-                className="w-full bg-transparent border border-border px-2 py-1.5 text-[12px] text-text outline-none focus:border-accent mb-3"
-              />
-              <button onClick={goNext} disabled={!projectName} className="px-4 py-1.5 bg-accent text-bg text-[12px] font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
-                Next
-              </button>
-            </div>
-          )}
-
-          {step?.id === "repo" && (
-            <div>
-              <h2 className="text-sm font-semibold text-text mb-3">GitHub Repository</h2>
-              <input
-                value={repo}
-                onChange={(e) => setRepo(e.target.value)}
-                placeholder="owner/repo"
-                className="w-full bg-transparent border border-border px-2 py-1.5 text-[12px] text-text outline-none focus:border-accent mb-3"
-              />
-              {step.error && <p className="text-[11px] text-error mb-2">{step.error}</p>}
-              <button onClick={verifyRepo} disabled={!repo || loading} className="px-4 py-1.5 bg-accent text-bg text-[12px] font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
-                {loading ? "Verifying..." : "Verify & Continue"}
-              </button>
-            </div>
-          )}
-
-          {step?.id === "protection" && (
-            <div>
-              <h2 className="text-sm font-semibold text-text mb-3">Branch Protection</h2>
-              <p className="text-[11px] text-text-muted mb-3">Configure branch protection on <code className="text-accent">main</code>. Run these commands or configure via GitHub UI:</p>
-              <div className="border border-border bg-bg-surface p-3 mb-3 text-[11px] space-y-2">
+      <div className="flex h-[calc(100%-80px)]">
+        {/* Left: Steps + Content */}
+        <div className="flex-1 flex gap-6 p-6 overflow-y-auto">
+          {/* Step sidebar */}
+          <div className="w-44 shrink-0">
+            {steps.map((s, i) => (
+              <div key={s.id} className="flex items-start gap-2 py-2">
+                <span className={`w-5 h-5 flex items-center justify-center text-[10px] border shrink-0 mt-0.5 ${
+                  s.status === "done" ? "border-accent text-accent" :
+                  s.status === "error" ? "border-error text-error" :
+                  s.status === "active" ? "border-accent text-accent bg-accent/10" :
+                  s.status === "skipped" ? "border-border text-text-muted line-through" :
+                  "border-border text-text-muted"
+                }`}>
+                  {s.status === "done" ? "\u2713" : s.status === "error" ? "!" : i + 1}
+                </span>
                 <div>
-                  <p className="text-text-muted mb-1">Enable branch protection via gh CLI:</p>
-                  <div className="flex items-center gap-2">
-                    <code className="text-accent flex-1 select-all">{`gh api repos/${repo}/branches/main/protection -X PUT -f "required_pull_request_reviews[required_approving_review_count]=1" -f "enforce_admins=false" -f "required_status_checks=null" -f "restrictions=null"`}</code>
-                    <button onClick={() => navigator.clipboard.writeText(`gh api repos/${repo}/branches/main/protection -X PUT -f "required_pull_request_reviews[required_approving_review_count]=1" -f "enforce_admins=false" -f "required_status_checks=null" -f "restrictions=null"`)} className="text-[10px] text-text-muted hover:text-accent shrink-0">copy</button>
-                  </div>
-                </div>
-                <div>
-                  <p className="text-text-muted mb-1">Or manually in GitHub UI:</p>
-                  <div className="flex items-center gap-2">
-                    <code className="text-accent flex-1 select-all">{`https://github.com/${repo}/settings/branches`}</code>
-                    <button onClick={() => navigator.clipboard.writeText(`https://github.com/${repo}/settings/branches`)} className="text-[10px] text-text-muted hover:text-accent shrink-0">copy</button>
-                  </div>
-                  <p className="text-text mt-1">→ Add rule for &quot;main&quot; → Require 1 approval → Save</p>
-                </div>
-                <div>
-                  <p className="text-text-muted mb-1">Add reviewer as collaborator (replace USERNAME):</p>
-                  <div className="flex items-center gap-2">
-                    <code className="text-accent flex-1 select-all">{`gh api repos/${repo}/collaborators/USERNAME -X PUT -f permission=push`}</code>
-                    <button onClick={() => navigator.clipboard.writeText(`gh api repos/${repo}/collaborators/USERNAME -X PUT -f permission=push`)} className="text-[10px] text-text-muted hover:text-accent shrink-0">copy</button>
-                  </div>
+                  <span className={`text-[11px] block leading-tight ${
+                    s.status === "active" ? "text-text font-semibold" :
+                    s.status === "done" ? "text-accent" :
+                    "text-text-muted"
+                  }`}>
+                    {s.label}
+                  </span>
+                  <span className="text-[10px] text-text-muted block">{s.subtitle}</span>
                 </div>
               </div>
-              <div className="flex gap-2">
-                <button onClick={goNext} className="px-4 py-1.5 bg-accent text-bg text-[12px] font-semibold hover:bg-accent-dim transition-colors">
-                  Done
-                </button>
-                <button onClick={skipStep} className="px-3 py-1.5 text-[12px] text-text-muted border border-border hover:text-text transition-colors">
-                  Skip
-                </button>
-              </div>
-            </div>
-          )}
+            ))}
+          </div>
 
-          {step?.id === "backend" && (
-            <div>
-              <h2 className="text-sm font-semibold text-text mb-3">CLI Backend per Agent</h2>
-              <div className="border border-border mb-3">
-                {["head", "reviewer1", "reviewer2", "dev"].map((agent) => (
-                  <div key={agent} className="flex items-center justify-between px-3 py-1.5 border-b border-border/50 last:border-b-0">
-                    <span className="text-[11px] text-text font-semibold w-10">{agent.charAt(0).toUpperCase() + agent.slice(1)}</span>
-                    <span className="text-[10px] text-text-muted w-16">{agent === "head" ? "Owner" : agent.startsWith("reviewer") ? "Reviewer" : "Builder"}</span>
-                    <select
-                      value={backends[agent]}
-                      onChange={(e) => setBackends({ ...backends, [agent]: e.target.value })}
-                      className="bg-transparent border border-border px-2 py-0.5 text-[11px] text-text outline-none focus:border-accent cursor-pointer"
-                    >
-                      {BACKENDS.map((b) => <option key={b.value} value={b.value} className="bg-bg-surface">{b.label}</option>)}
-                    </select>
-                  </div>
-                ))}
-              </div>
-              <h2 className="text-sm font-semibold text-text mb-2 mt-4">Reviewer Credentials</h2>
-              <p className="text-[11px] text-text-muted mb-2">Used by reviewer1/reviewer2 to post GitHub reviews</p>
-              <input
-                value={reviewerUser}
-                onChange={(e) => setReviewerUser(e.target.value)}
-                placeholder="Reviewer GitHub username"
-                className="w-full bg-transparent border border-border px-2 py-1.5 text-[12px] text-text outline-none focus:border-accent mb-2"
-              />
-              <input
-                value={reviewerTokenPath}
-                onChange={(e) => setReviewerTokenPath(e.target.value)}
-                placeholder="Token file path (default: ~/.quadwork/reviewer-token)"
-                className="w-full bg-transparent border border-border px-2 py-1.5 text-[12px] text-text outline-none focus:border-accent mb-3"
-              />
-              <button onClick={goNext} className="px-4 py-1.5 bg-accent text-bg text-[12px] font-semibold hover:bg-accent-dim transition-colors">
-                Next
-              </button>
-            </div>
-          )}
-
-          {step?.id === "workdir" && (
-            <div>
-              <h2 className="text-sm font-semibold text-text mb-3">Working Directory</h2>
-              <input
-                value={workingDir}
-                onChange={(e) => setWorkingDir(e.target.value)}
-                placeholder="/path/to/project"
-                className="w-full bg-transparent border border-border px-2 py-1.5 text-[12px] text-text outline-none focus:border-accent mb-3"
-              />
-              <button onClick={goNext} disabled={!workingDir} className="px-4 py-1.5 bg-accent text-bg text-[12px] font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
-                Next
-              </button>
-            </div>
-          )}
-
-          {step?.id === "worktrees" && (
-            <div>
-              <h2 className="text-sm font-semibold text-text mb-3">Create Worktrees</h2>
-              <p className="text-[11px] text-text-muted mb-3">Creates 4 git worktrees as sibling directories: <code className="text-accent">{workingDir ? `${workingDir.split("/").pop()}-head/` : "project-head/"}</code>, etc.</p>
-              {step.error && <p className="text-[11px] text-error mb-2">{step.error}</p>}
-              <div className="flex gap-2">
-                <button onClick={createWorktrees} disabled={loading} className="px-4 py-1.5 bg-accent text-bg text-[12px] font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
-                  {loading ? "Creating..." : "Create Worktrees"}
-                </button>
-                <button onClick={skipStep} className="px-3 py-1.5 text-[12px] text-text-muted border border-border hover:text-text transition-colors">
-                  Skip
-                </button>
-              </div>
-            </div>
-          )}
-
-          {step?.id === "seeds" && (
-            <div>
-              <h2 className="text-sm font-semibold text-text mb-3">Seed Files</h2>
-              <p className="text-[11px] text-text-muted mb-3">Creates default AGENTS.md + CLAUDE.md in each worktree</p>
-              {step.error && <p className="text-[11px] text-error mb-2">{step.error}</p>}
-              <div className="flex gap-2">
-                <button onClick={seedFiles} disabled={loading} className="px-4 py-1.5 bg-accent text-bg text-[12px] font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
-                  {loading ? "Creating..." : "Create Seed Files"}
-                </button>
-                <button onClick={skipStep} className="px-3 py-1.5 text-[12px] text-text-muted border border-border hover:text-text transition-colors">
-                  Skip
-                </button>
-              </div>
-            </div>
-          )}
-
-          {step?.id === "agentchattr" && (
-            <div>
-              <h2 className="text-sm font-semibold text-text mb-3">AgentChattr Configuration</h2>
-              <p className="text-[11px] text-text-muted mb-3">Add agents to AgentChattr config.toml and restart the server.</p>
-              {step.error && <p className="text-[11px] text-error mb-2">{step.error}</p>}
-              <div className="flex gap-2">
+          {/* Step content */}
+          <div className="flex-1 border border-border p-5 min-h-0">
+            {/* Step 1: Project Name */}
+            {step?.id === "name" && (
+              <div>
+                <h2 className="text-sm font-semibold text-text mb-1">Name your project</h2>
+                <p className="text-[11px] text-text-muted mb-4">
+                  This name identifies your project in the dashboard and agent configs.
+                </p>
+                <input
+                  value={projectName}
+                  onChange={(e) => setProjectName(e.target.value)}
+                  placeholder="e.g. My DeFi App"
+                  className="w-full bg-transparent border border-border px-2 py-1.5 text-[12px] text-text outline-none focus:border-accent mb-4"
+                  autoFocus
+                />
                 <button
-                  onClick={async () => {
-                    // Pre-compute available ports for the new project
-                    let agentchattr_port = 8300, mcp_http_port = 8200, mcp_sse_port = 8201;
-                    try {
-                      const cfgRes = await fetch("/api/config");
-                      if (cfgRes.ok) {
-                        const cfg = await cfgRes.json();
-                        const usedChattr = new Set((cfg.projects || []).map((p: { agentchattr_url?: string }) => {
-                          try { return parseInt(new URL(p.agentchattr_url || "").port, 10); } catch { return 0; }
-                        }).filter(Boolean));
-                        const usedMcp = new Set((cfg.projects || []).flatMap((p: { mcp_http_port?: number; mcp_sse_port?: number }) => [p.mcp_http_port, p.mcp_sse_port]).filter(Boolean));
-                        while (usedChattr.has(agentchattr_port)) agentchattr_port++;
-                        while (usedMcp.has(mcp_http_port)) mcp_http_port++;
-                        mcp_sse_port = mcp_http_port + 1;
-                        while (usedMcp.has(mcp_sse_port)) mcp_sse_port++;
-                      }
-                    } catch {}
-                    const result = await apiCall("agentchattr-config", { workingDir, projectName, repo, backends, agentchattr_port, mcp_http_port, mcp_sse_port });
-                    if (result.ok) {
-                      setChattrConfig({ agentchattr_token: result.agentchattr_token, agentchattr_port: result.agentchattr_port, mcp_http_port: result.mcp_http_port, mcp_sse_port: result.mcp_sse_port });
-                      goNext();
-                    } else updateStep(currentStep, { status: "error", error: result.error });
-                  }}
+                  onClick={goNext}
+                  disabled={!projectName.trim()}
+                  className="px-4 py-1.5 bg-accent text-bg text-[12px] font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            )}
+
+            {/* Step 2: GitHub Repo */}
+            {step?.id === "repo" && (
+              <div>
+                <h2 className="text-sm font-semibold text-text mb-1">Connect a GitHub repository</h2>
+                <p className="text-[11px] text-text-muted mb-4">
+                  Select an existing repo or enter one manually. Agents will work within this repo.
+                </p>
+
+                {!repoManual && (
+                  <>
+                    {ghUser && (
+                      <p className="text-[11px] text-text-muted mb-2">
+                        Showing repos for <span className="text-accent">{ghUser}</span>
+                      </p>
+                    )}
+                    <input
+                      value={repoSearch}
+                      onChange={(e) => setRepoSearch(e.target.value)}
+                      placeholder="Search repos..."
+                      className="w-full bg-transparent border border-border px-2 py-1.5 text-[12px] text-text outline-none focus:border-accent mb-2"
+                    />
+                    {reposLoading && <p className="text-[11px] text-text-muted mb-2">Loading...</p>}
+                    <div className="max-h-40 overflow-y-auto border border-border mb-3">
+                      {filteredRepos.map((r) => (
+                        <button
+                          key={r.name}
+                          onClick={() => setRepo(`${ghUser}/${r.name}`)}
+                          className={`w-full text-left px-3 py-1.5 text-[11px] border-b border-border/50 last:border-b-0 hover:bg-accent/5 transition-colors ${
+                            repo === `${ghUser}/${r.name}` ? "bg-accent/10 text-accent" : "text-text"
+                          }`}
+                        >
+                          <span className="font-semibold">{r.name}</span>
+                          {r.isPrivate && <span className="text-[10px] text-text-muted ml-2">private</span>}
+                          {r.description && <span className="text-[10px] text-text-muted ml-2">{r.description}</span>}
+                        </button>
+                      ))}
+                      {!reposLoading && filteredRepos.length === 0 && (
+                        <p className="px-3 py-2 text-[11px] text-text-muted">No repos found.</p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => setRepoManual(true)}
+                      className="text-[11px] text-text-muted hover:text-accent transition-colors mb-3 block"
+                    >
+                      Enter manually instead
+                    </button>
+                  </>
+                )}
+
+                {repoManual && (
+                  <>
+                    <input
+                      value={repo}
+                      onChange={(e) => setRepo(e.target.value)}
+                      placeholder="owner/repo"
+                      className="w-full bg-transparent border border-border px-2 py-1.5 text-[12px] text-text outline-none focus:border-accent mb-2"
+                    />
+                    <button
+                      onClick={() => setRepoManual(false)}
+                      className="text-[11px] text-text-muted hover:text-accent transition-colors mb-3 block"
+                    >
+                      Back to repo list
+                    </button>
+                  </>
+                )}
+
+                {/* Branch protection toggle */}
+                <label className="flex items-center gap-2 mb-4 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={enableProtection}
+                    onChange={(e) => setEnableProtection(e.target.checked)}
+                    className="accent-accent"
+                  />
+                  <span className="text-[11px] text-text-muted">
+                    Enable branch protection on <code className="text-accent">main</code>
+                  </span>
+                </label>
+
+                {enableProtection && (
+                  <div className="border border-border bg-bg-surface p-3 mb-4 text-[11px] space-y-2">
+                    <p className="text-text-muted">Run this after setup, or configure in GitHub UI:</p>
+                    <div className="flex items-center gap-2">
+                      <code className="text-accent flex-1 select-all text-[10px] break-all">
+                        {`gh api repos/${repo || "owner/repo"}/branches/main/protection -X PUT -f "required_pull_request_reviews[required_approving_review_count]=1" -f "enforce_admins=false" -f "required_status_checks=null" -f "restrictions=null"`}
+                      </code>
+                      <button
+                        onClick={() => navigator.clipboard.writeText(`gh api repos/${repo}/branches/main/protection -X PUT -f "required_pull_request_reviews[required_approving_review_count]=1" -f "enforce_admins=false" -f "required_status_checks=null" -f "restrictions=null"`)}
+                        className="text-[10px] text-text-muted hover:text-accent shrink-0"
+                      >
+                        copy
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {step.error && <p className="text-[11px] text-error mb-2">{step.error}</p>}
+                <button
+                  onClick={verifyRepo}
+                  disabled={!repo || loading}
+                  className="px-4 py-1.5 bg-accent text-bg text-[12px] font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50"
+                >
+                  {loading ? "Verifying..." : "Verify & Continue"}
+                </button>
+              </div>
+            )}
+
+            {/* Step 3: Agent Models */}
+            {step?.id === "models" && (
+              <div>
+                <h2 className="text-sm font-semibold text-text mb-1">Configure agent CLI backends</h2>
+                <p className="text-[11px] text-text-muted mb-4">
+                  Each agent runs its own CLI instance. Pick the backend for each role.
+                </p>
+                <div className="border border-border mb-4">
+                  {AGENTS.map((agent) => (
+                    <div key={agent.key} className="flex items-center justify-between px-3 py-2 border-b border-border/50 last:border-b-0">
+                      <div className="flex-1 min-w-0">
+                        <span className="text-[11px] text-text font-semibold block">{agent.label}</span>
+                        <span className="text-[10px] text-text-muted">{agent.desc}</span>
+                      </div>
+                      <select
+                        value={backends[agent.key]}
+                        onChange={(e) => setBackends({ ...backends, [agent.key]: e.target.value })}
+                        className="bg-transparent border border-border px-2 py-0.5 text-[11px] text-text outline-none focus:border-accent cursor-pointer ml-3"
+                      >
+                        {BACKENDS.map((b) => <option key={b.value} value={b.value} className="bg-bg-surface">{b.label}</option>)}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Reviewer credentials toggle */}
+                <label className="flex items-center gap-2 mb-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showReviewerCreds}
+                    onChange={(e) => setShowReviewerCreds(e.target.checked)}
+                    className="accent-accent"
+                  />
+                  <span className="text-[11px] text-text-muted">
+                    Configure reviewer credentials (for GitHub PR reviews)
+                  </span>
+                </label>
+
+                {showReviewerCreds && (
+                  <div className="border border-border p-3 mb-4 space-y-3">
+                    <div>
+                      <label className="text-[11px] text-text-muted block mb-1">Reviewer GitHub username</label>
+                      <input
+                        value={reviewerUser}
+                        onChange={(e) => setReviewerUser(e.target.value)}
+                        placeholder="github-username"
+                        className="w-full bg-transparent border border-border px-2 py-1.5 text-[12px] text-text outline-none focus:border-accent"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-text-muted block mb-2">Token source</label>
+                      <div className="flex gap-4 mb-2">
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="tokenMode"
+                            checked={reviewerTokenMode === "paste"}
+                            onChange={() => setReviewerTokenMode("paste")}
+                            className="accent-accent"
+                          />
+                          <span className="text-[11px] text-text">Paste token</span>
+                        </label>
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="tokenMode"
+                            checked={reviewerTokenMode === "file"}
+                            onChange={() => setReviewerTokenMode("file")}
+                            className="accent-accent"
+                          />
+                          <span className="text-[11px] text-text">Use existing file</span>
+                        </label>
+                      </div>
+                      {reviewerTokenMode === "paste" ? (
+                        <input
+                          value={reviewerTokenValue}
+                          onChange={(e) => setReviewerTokenValue(e.target.value)}
+                          placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+                          type="password"
+                          className="w-full bg-transparent border border-border px-2 py-1.5 text-[12px] text-text outline-none focus:border-accent"
+                        />
+                      ) : (
+                        <>
+                          <input
+                            value={reviewerTokenPath}
+                            onChange={(e) => setReviewerTokenPath(e.target.value)}
+                            placeholder="~/.quadwork/reviewer-token"
+                            className="w-full bg-transparent border border-border px-2 py-1.5 text-[12px] text-text outline-none focus:border-accent"
+                          />
+                          {reviewerTokenPath && !reviewerTokenPath.startsWith("~/.quadwork") && !reviewerTokenPath.startsWith(String.raw`${process.env.HOME}/.quadwork`) && (
+                            <p className="text-[10px] text-[#ffcc00] mt-1">
+                              This path may be inside a git repository. Consider using the default ~/.quadwork/ location to avoid accidentally committing tokens.
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  onClick={goNext}
+                  className="px-4 py-1.5 bg-accent text-bg text-[12px] font-semibold hover:bg-accent-dim transition-colors"
+                >
+                  Next
+                </button>
+              </div>
+            )}
+
+            {/* Step 4: Working Directory */}
+            {step?.id === "workdir" && (
+              <WorkdirStep
+                repo={repo}
+                workingDir={workingDir}
+                setWorkingDir={setWorkingDir}
+                error={step.error}
+                onNext={goNext}
+              />
+            )}
+
+            {/* Step 5: Create Workspaces */}
+            {step?.id === "workspaces" && (
+              <div>
+                <h2 className="text-sm font-semibold text-text mb-1">Create workspaces</h2>
+                <p className="text-[11px] text-text-muted mb-4">
+                  This creates git worktrees for each agent and writes seed configuration files (AGENTS.md, CLAUDE.md) into each workspace.
+                </p>
+                {step.error && <p className="text-[11px] text-error mb-2">{step.error}</p>}
+                {workspaceLog.length > 0 && (
+                  <div className="border border-border bg-bg-surface p-3 mb-4 text-[11px] text-text-muted space-y-0.5 font-mono">
+                    {workspaceLog.map((line, i) => (
+                      <p key={i}>{line}</p>
+                    ))}
+                  </div>
+                )}
+                <button
+                  onClick={createWorkspaces}
                   disabled={loading}
                   className="px-4 py-1.5 bg-accent text-bg text-[12px] font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50"
                 >
-                  {loading ? "Updating..." : "Update AgentChattr Config"}
-                </button>
-                <button onClick={skipStep} className="px-3 py-1.5 text-[12px] text-text-muted border border-border hover:text-text transition-colors">
-                  Skip
+                  {loading ? "Creating..." : "Create Worktrees & Seed Files"}
                 </button>
               </div>
-            </div>
-          )}
+            )}
 
-          {step?.id === "config" && (
+            {/* Step 6: Ready to Launch */}
+            {step?.id === "launch" && (
+              <div>
+                <h2 className="text-sm font-semibold text-text mb-1">Ready to launch</h2>
+                <p className="text-[11px] text-text-muted mb-4">
+                  Everything is configured. Review the summary and launch your AI dev team.
+                </p>
+
+                {/* Team roster */}
+                <div className="border border-border mb-4">
+                  <div className="px-3 py-1.5 border-b border-border bg-bg-surface">
+                    <span className="text-[11px] text-text font-semibold">Team Roster</span>
+                  </div>
+                  {AGENTS.map((agent) => (
+                    <div key={agent.key} className="flex items-center justify-between px-3 py-1.5 border-b border-border/50 last:border-b-0">
+                      <span className="text-[11px] text-text font-semibold">{agent.label}</span>
+                      <span className="text-[10px] text-text-muted">{agent.role}</span>
+                      <span className="text-[11px] text-accent">{backends[agent.key] === "claude" ? "Claude Code" : "Codex"}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {step.error && <p className="text-[11px] text-error mb-2">{step.error}</p>}
+                {launchStatus === "done" && (
+                  <p className="text-[11px] text-accent mb-2">Project saved. Redirecting to dashboard...</p>
+                )}
+                <button
+                  onClick={launchProject}
+                  disabled={launchStatus === "running" || launchStatus === "done"}
+                  className="px-5 py-2 bg-accent text-bg text-[12px] font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50"
+                >
+                  {launchStatus === "running" ? "Launching..." : launchStatus === "done" ? "Launched!" : "Launch Project"}
+                </button>
+              </div>
+            )}
+
+            {currentStep >= steps.length && (
+              <div className="text-center py-8">
+                <p className="text-accent text-sm font-semibold">Setup complete!</p>
+                <p className="text-[11px] text-text-muted mt-2">Redirecting to project dashboard...</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right: Live Preview Panel */}
+        <div className="w-64 shrink-0 border-l border-border p-4 overflow-y-auto bg-bg-surface/50">
+          <h3 className="text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-3">
+            Configuration Preview
+          </h3>
+          <div className="space-y-3 text-[11px]">
             <div>
-              <h2 className="text-sm font-semibold text-text mb-3">Save Configuration</h2>
-              <div className="border border-border bg-bg-surface p-3 mb-3 text-[11px] text-text space-y-1">
-                <p><strong>Name:</strong> {projectName}</p>
-                <p><strong>Repo:</strong> {repo}</p>
-                <p><strong>Backends:</strong> {Object.entries(backends).map(([a, b]) => `${a.toUpperCase()}=${b}`).join(", ")}</p>
-                <p><strong>Directory:</strong> {workingDir}</p>
-                <p><strong>Agents:</strong> Head, Reviewer1, Reviewer2, Dev</p>
+              <span className="text-text-muted block mb-0.5">Project</span>
+              <span className="text-text">{projectName || "\u2014"}</span>
+            </div>
+            <div>
+              <span className="text-text-muted block mb-0.5">Repository</span>
+              <span className="text-text">{repo || "\u2014"}</span>
+              {enableProtection && <span className="text-[10px] text-accent block">+ branch protection</span>}
+            </div>
+            <div>
+              <span className="text-text-muted block mb-0.5">Backends</span>
+              {Object.entries(backends).map(([agent, backend]) => (
+                <div key={agent} className="flex justify-between">
+                  <span className="text-text capitalize">{agent}</span>
+                  <span className="text-accent">{backend}</span>
+                </div>
+              ))}
+            </div>
+            {showReviewerCreds && reviewerUser && (
+              <div>
+                <span className="text-text-muted block mb-0.5">Reviewer</span>
+                <span className="text-text">@{reviewerUser}</span>
               </div>
-              {step.error && <p className="text-[11px] text-error mb-2">{step.error}</p>}
-              <button onClick={saveConfig} disabled={loading} className="px-4 py-1.5 bg-accent text-bg text-[12px] font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
-                {loading ? "Saving..." : "Save & Open Project"}
-              </button>
+            )}
+            <div>
+              <span className="text-text-muted block mb-0.5">Directory</span>
+              <span className="text-text font-mono text-[10px]">{workingDir || "\u2014"}</span>
             </div>
-          )}
-
-          {currentStep >= steps.length && (
-            <div className="text-center py-8">
-              <p className="text-accent text-sm font-semibold">Setup complete!</p>
-              <p className="text-[11px] text-text-muted mt-2">Redirecting to project dashboard...</p>
+            <div>
+              <span className="text-text-muted block mb-0.5">Status</span>
+              <div className="space-y-0.5">
+                {steps.map((s) => (
+                  <div key={s.id} className="flex items-center gap-1.5">
+                    <span className={`text-[10px] ${
+                      s.status === "done" ? "text-accent" :
+                      s.status === "error" ? "text-error" :
+                      s.status === "active" ? "text-text" :
+                      "text-text-muted"
+                    }`}>
+                      {s.status === "done" ? "\u2713" : s.status === "error" ? "\u2717" : s.status === "active" ? "\u25cf" : "\u25cb"}
+                    </span>
+                    <span className={`text-[10px] ${s.status === "active" ? "text-text" : "text-text-muted"}`}>
+                      {s.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
-          )}
+          </div>
         </div>
       </div>
     </div>
