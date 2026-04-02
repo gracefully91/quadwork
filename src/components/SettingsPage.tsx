@@ -39,7 +39,6 @@ interface Config {
   port: number;
   agentchattr_url: string;
   agentchattr_token: string;
-  default_backend: string;
   projects: ProjectConfig[];
 }
 
@@ -119,7 +118,6 @@ export default function SettingsPage() {
         port: data.port || 8400,
         agentchattr_url: data.agentchattr_url || "http://127.0.0.1:8300",
         agentchattr_token: data.agentchattr_token || "",
-        default_backend: data.default_backend || "claude",
         projects: data.projects || [],
       }))
       .catch(() => {});
@@ -330,12 +328,6 @@ export default function SettingsPage() {
             value={config.agentchattr_url}
             onChange={(v) => updateGlobal("agentchattr_url", v)}
             placeholder="http://127.0.0.1:8300"
-          />
-          <Select
-            label="Default CLI Backend"
-            value={config.default_backend}
-            onChange={(v) => updateGlobal("default_backend", v)}
-            options={BACKENDS}
           />
           <Input
             label="QuadWork Port"

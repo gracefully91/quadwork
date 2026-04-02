@@ -670,7 +670,7 @@ async function cmdInit() {
   console.log(`  ${c.cyan}${c.bold}║${c.reset}  ${c.white}${c.bold}QuadWork Init${c.reset}                           ${c.cyan}${c.bold}║${c.reset}`);
   console.log(`  ${c.cyan}${c.bold}║${c.reset}  ${c.dim}Global setup — projects via web UI${c.reset}       ${c.cyan}${c.bold}║${c.reset}`);
   console.log(`  ${c.cyan}${c.bold}╚══════════════════════════════════════════╝${c.reset}`);
-  console.log(`\n  ${c.dim}Tip: Press Enter to accept defaults shown in [brackets].${c.reset}\n`);
+  console.log(`\n  ${c.dim}Press Enter to accept defaults. Takes under 30 seconds.${c.reset}\n`);
 
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
@@ -682,16 +682,13 @@ async function cmdInit() {
       if (!proceed) { rl.close(); process.exit(1); }
     }
 
-    // Step 2: Global config
-    header("Step 2: Global Configuration");
-    const port = await ask(rl, "Dashboard port", "8400");
-    const defaultBackend = which("claude") ? "claude" : which("codex") ? "codex" : "claude";
-    const backend = await ask(rl, "Default CLI backend (claude/codex)", defaultBackend);
+    // Step 2: Dashboard port
+    header("Step 2: Dashboard Port");
+    const port = await ask(rl, "Port for the QuadWork dashboard (Enter for default)", "8400");
 
     // Write global config
     const config = readConfig();
     config.port = parseInt(port, 10) || 8400;
-    config.default_backend = backend;
     writeConfig(config);
     ok(`Wrote ${CONFIG_PATH}`);
 
@@ -723,7 +720,6 @@ async function cmdInit() {
     header("Setup Complete");
     log(`Config:     ${CONFIG_PATH}`);
     log(`Dashboard:  ${dashboardUrl}`);
-    log(`Backend:    ${backend}`);
     log("");
     log("Next steps:");
     log(`  Open ${c.cyan}${dashboardUrl}/setup${c.reset} to create your first project`);
