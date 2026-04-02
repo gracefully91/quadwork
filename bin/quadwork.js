@@ -430,8 +430,9 @@ function writeAgentChattrConfig(setup, configTomlPath, { skipInstall = false } =
     acProc.unref();
     if (acProc.pid) {
       ok(`AgentChattr started (PID: ${acProc.pid})`);
-      const pidFile = path.join(CONFIG_DIR, "agentchattr.pid");
+      // Per-project PID file
       if (!fs.existsSync(CONFIG_DIR)) fs.mkdirSync(CONFIG_DIR, { recursive: true });
+      const pidFile = path.join(CONFIG_DIR, `agentchattr-${setup.projectName}.pid`);
       fs.writeFileSync(pidFile, String(acProc.pid));
     } else {
       warn("Could not start AgentChattr — start manually: agentchattr --config " + configTomlPath);
@@ -806,7 +807,15 @@ function cmdStop() {
 
   let stopped = 0;
   if (stopPid("Telegram bridge", "telegram-bridge.pid")) stopped++;
+
+  // Stop per-project AgentChattr instances
+  const config = readConfig();
+  for (const project of (config.projects || [])) {
+    if (stopPid(`AgentChattr (${project.id})`, `agentchattr-${project.id}.pid`)) stopped++;
+  }
+  // Also stop legacy single-instance PID if present
   if (stopPid("AgentChattr", "agentchattr.pid")) stopped++;
+
   if (stopPid("Server", "server.pid")) stopped++;
 
   if (stopped === 0) warn("No running processes found");
