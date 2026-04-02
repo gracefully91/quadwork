@@ -550,48 +550,43 @@ router.post("/api/setup", (req, res) => {
     case "agentchattr-config": {
       const workingDir = body.workingDir;
       if (!workingDir) return res.json({ ok: false, error: "Missing working directory" });
-      // Use directory basename for sibling paths, display name for metadata
       const dirName = path.basename(workingDir);
       const displayName = body.projectName || dirName;
       const parentDir = path.dirname(workingDir);
-      const tomlPaths = [
-        path.join(workingDir, "agentchattr", "config.toml"),
-        path.join(parentDir, "agentchattr", "config.toml"),
-        path.join(os.homedir(), ".agentchattr", "config.toml"),
-      ];
-      let tomlPath = tomlPaths.find((p) => fs.existsSync(p));
       const backends = body.backends;
-      if (!tomlPath) {
-        const dir = path.join(workingDir, "agentchattr");
-        fs.mkdirSync(dir, { recursive: true });
-        tomlPath = path.join(dir, "config.toml");
-        const agents = ["head", "reviewer1", "reviewer2", "dev"];
-        const colors = ["#10a37f", "#22c55e", "#f59e0b", "#da7756"];
-        const labels = ["Owner", "Reviewer", "Reviewer", "Builder"];
-        let content = `[meta]\nname = "${displayName}"\n\n`;
-        agents.forEach((agent, i) => {
-          const wtDir = path.join(parentDir, `${dirName}-${agent}`);
-          content += `[agents.${agent}]\ncommand = "${(backends && backends[agent]) || "claude"}"\ncwd = "${wtDir}"\ncolor = "${colors[i]}"\nlabel = "${agent.charAt(0).toUpperCase() + agent.slice(1)} ${labels[i]}"\nmcp_inject = "flag"\n\n`;
-        });
-        fs.writeFileSync(tomlPath, content);
-      } else {
-        let content = fs.readFileSync(tomlPath, "utf-8");
-        const agents = ["head", "reviewer1", "reviewer2", "dev"];
-        const colors = ["#10a37f", "#22c55e", "#f59e0b", "#da7756"];
-        const labels = ["Owner", "Reviewer", "Reviewer", "Builder"];
-        agents.forEach((agent, i) => {
-          if (!content.includes(`[agents.${agent}]`)) {
-            const wtDir = path.join(parentDir, `${dirName}-${agent}`);
-            content += `\n[agents.${agent}]\ncommand = "${(backends && backends[agent]) || "claude"}"\ncwd = "${wtDir}"\ncolor = "${colors[i]}"\nlabel = "${agent.charAt(0).toUpperCase() + agent.slice(1)} ${labels[i]}"\nmcp_inject = "flag"\n`;
-          }
-        });
-        fs.writeFileSync(tomlPath, content);
-      }
-      // Restart AgentChattr so config changes take effect
+
+      // Per-project: isolated config dir + data dir
+      const projectConfigDir = path.join(workingDir, "agentchattr");
+      fs.mkdirSync(projectConfigDir, { recursive: true });
+      const dataDir = path.join(projectConfigDir, "data");
+      fs.mkdirSync(dataDir, { recursive: true });
+      const tomlPath = path.join(projectConfigDir, "config.toml");
+
+      // Resolve per-project port from config (if already assigned)
+      const { resolveProjectChattr: rpc } = require("./config");
+      const projectChattr = rpc(dirName);
+      const chattrPort = new URL(projectChattr.url).port || "8300";
+      const mcp_http = projectChattr.mcp_http_port || 8200;
+      const mcp_sse = projectChattr.mcp_sse_port || 8201;
+
+      const agents = ["head", "reviewer1", "reviewer2", "dev"];
+      const colors = ["#10a37f", "#22c55e", "#f59e0b", "#da7756"];
+      const labels = ["Owner", "Reviewer", "Reviewer", "Builder"];
+
+      let content = `[meta]\nname = "${displayName}"\n\n`;
+      content += `[server]\nport = ${chattrPort}\nhost = "127.0.0.1"\ndata_dir = "${dataDir}"\n\n`;
+      agents.forEach((agent, i) => {
+        const wtDir = path.join(parentDir, `${dirName}-${agent}`);
+        content += `[agents.${agent}]\ncommand = "${(backends && backends[agent]) || "claude"}"\ncwd = "${wtDir}"\ncolor = "${colors[i]}"\nlabel = "${agent.charAt(0).toUpperCase() + agent.slice(1)} ${labels[i]}"\nmcp_inject = "flag"\n\n`;
+      });
+      content += `[mcp]\nhttp_port = ${mcp_http}\nsse_port = ${mcp_sse}\n`;
+      fs.writeFileSync(tomlPath, content);
+
+      // Restart this project's AgentChattr instance (not global)
       try {
         const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8"));
-        const port = cfg.port || 8400;
-        fetch(`http://127.0.0.1:${port}/api/agentchattr/restart`, { method: "POST" }).catch(() => {});
+        const qwPort = cfg.port || 8400;
+        fetch(`http://127.0.0.1:${qwPort}/api/agentchattr/${encodeURIComponent(dirName)}/restart`, { method: "POST" }).catch(() => {});
       } catch {}
       return res.json({ ok: true, path: tomlPath });
     }
@@ -612,11 +607,17 @@ router.post("/api/setup", (req, res) => {
           command: (backends && backends[agentId]) || "claude",
         };
       }
-      // Auto-assign per-project AgentChattr and MCP ports
-      const idx = cfg.projects.length;
-      const chattrPort = 8300 + idx;
-      const mcp_http_port = 8200 + (idx * 2);
-      const mcp_sse_port = 8201 + (idx * 2);
+      // Auto-assign per-project AgentChattr and MCP ports (scan existing to avoid collisions)
+      const usedChattrPorts = new Set(cfg.projects.map((p) => {
+        try { return parseInt(new URL(p.agentchattr_url).port, 10); } catch { return 0; }
+      }).filter(Boolean));
+      const usedMcpPorts = new Set(cfg.projects.flatMap((p) => [p.mcp_http_port, p.mcp_sse_port]).filter(Boolean));
+      let chattrPort = 8300;
+      while (usedChattrPorts.has(chattrPort)) chattrPort++;
+      let mcp_http_port = 8200;
+      while (usedMcpPorts.has(mcp_http_port)) mcp_http_port++;
+      let mcp_sse_port = mcp_http_port + 1;
+      while (usedMcpPorts.has(mcp_sse_port)) mcp_sse_port++;
       cfg.projects.push({
         id, name, repo, working_dir: workingDir, agents,
         agentchattr_url: `http://127.0.0.1:${chattrPort}`,

@@ -380,6 +380,22 @@ function writeAgentChattrConfig(setup, configTomlPath, { skipInstall = false } =
     );
   }
 
+  // Per-project: isolated data dir and port
+  const dataDir = path.join(path.dirname(configTomlPath), "data");
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+  // Read assigned port from config (set by writeQuadWorkConfig)
+  const existingConfig = readConfig();
+  const existingProject = existingConfig.projects?.find((p) => p.id === setup.projectName);
+  const chattrPort = existingProject?.agentchattr_url
+    ? new URL(existingProject.agentchattr_url).port
+    : "8300";
+  const mcpHttp = existingProject?.mcp_http_port || 8200;
+  const mcpSse = existingProject?.mcp_sse_port || 8201;
+  tomlContent = tomlContent.replace(/^port = \d+/m, `port = ${chattrPort}`);
+  tomlContent = tomlContent.replace(/^data_dir = .+/m, `data_dir = "${dataDir}"`);
+  tomlContent = tomlContent.replace(/^http_port = \d+/m, `http_port = ${mcpHttp}`);
+  tomlContent = tomlContent.replace(/^sse_port = \d+/m, `sse_port = ${mcpSse}`);
+
   // Write config.toml
   const configDir = path.dirname(configTomlPath);
   if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
@@ -610,13 +626,21 @@ function writeQuadWorkConfig(setup) {
     };
   }
 
-  // Auto-assign per-project AgentChattr and MCP ports
+  // Auto-assign per-project AgentChattr and MCP ports (scan existing to avoid collisions)
   const existingIdx = config.projects.findIndex((p) => p.id === setup.projectName);
-  const projectIdx = existingIdx >= 0 ? existingIdx : config.projects.length;
-  const chattrPort = 8300 + projectIdx;
+  const usedChattrPorts = new Set(config.projects.map((p) => {
+    try { return parseInt(new URL(p.agentchattr_url).port, 10); } catch { return 0; }
+  }).filter(Boolean));
+  const usedMcpPorts = new Set(config.projects.flatMap((p) => [p.mcp_http_port, p.mcp_sse_port]).filter(Boolean));
+  let chattrPort = 8300;
+  while (usedChattrPorts.has(chattrPort)) chattrPort++;
+  let mcp_http = 8200;
+  while (usedMcpPorts.has(mcp_http)) mcp_http++;
+  let mcp_sse = mcp_http + 1;
+  while (usedMcpPorts.has(mcp_sse)) mcp_sse++;
   project.agentchattr_url = `http://127.0.0.1:${chattrPort}`;
-  project.mcp_http_port = 8200 + (projectIdx * 2);
-  project.mcp_sse_port = 8201 + (projectIdx * 2);
+  project.mcp_http_port = mcp_http;
+  project.mcp_sse_port = mcp_sse;
 
   // Upsert project
   if (existingIdx >= 0) config.projects[existingIdx] = project;
