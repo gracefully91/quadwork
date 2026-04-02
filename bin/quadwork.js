@@ -696,6 +696,7 @@ async function cmdInit() {
     header("Step 3: Starting Dashboard");
     const quadworkDir = path.join(__dirname, "..");
     const serverDir = path.join(quadworkDir, "server");
+    let serverPid = null;
     if (fs.existsSync(path.join(serverDir, "index.js"))) {
       const server = spawn("node", [serverDir], {
         stdio: "ignore",
@@ -704,27 +705,55 @@ async function cmdInit() {
       });
       server.unref();
       if (server.pid) {
-        ok(`Server started (PID: ${server.pid})`);
+        serverPid = server.pid;
+        ok(`Server started (PID: ${serverPid})`);
         const pidFile = path.join(CONFIG_DIR, "server.pid");
         if (!fs.existsSync(CONFIG_DIR)) fs.mkdirSync(CONFIG_DIR, { recursive: true });
-        fs.writeFileSync(pidFile, String(server.pid));
+        fs.writeFileSync(pidFile, String(serverPid));
       }
     } else {
       warn("Server not found — run from the quadwork directory");
     }
 
-    // Done
+    // Done — celebratory welcome
     const dashPort = parseInt(port, 10) || 8400;
     const dashboardUrl = `http://127.0.0.1:${dashPort}`;
 
-    header("Setup Complete");
-    log(`Config:     ${CONFIG_PATH}`);
-    log(`Dashboard:  ${dashboardUrl}`);
-    log("");
-    log("Next steps:");
-    log(`  Open ${c.cyan}${dashboardUrl}/setup${c.reset} to create your first project`);
-    log("  npx quadwork stop     — stop all processes");
-    log("");
+    console.log("");
+    console.log(`  ${c.cyan}${c.bold}╔══════════════════════════════════════════════════════════╗${c.reset}`);
+    console.log(`  ${c.cyan}${c.bold}║${c.reset}                                                          ${c.cyan}${c.bold}║${c.reset}`);
+    console.log(`  ${c.cyan}${c.bold}║${c.reset}   ${c.green}${c.bold}Welcome to QuadWork!${c.reset}                                ${c.cyan}${c.bold}║${c.reset}`);
+    console.log(`  ${c.cyan}${c.bold}║${c.reset}                                                          ${c.cyan}${c.bold}║${c.reset}`);
+    console.log(`  ${c.cyan}${c.bold}║${c.reset}   Your AI-powered dev team is ready to ship.             ${c.cyan}${c.bold}║${c.reset}`);
+    console.log(`  ${c.cyan}${c.bold}║${c.reset}                                                          ${c.cyan}${c.bold}║${c.reset}`);
+    console.log(`  ${c.cyan}${c.bold}║${c.reset}   ${c.green}*${c.reset} ${c.bold}Head${c.reset}        ${c.dim}— coordinates & merges${c.reset}                  ${c.cyan}${c.bold}║${c.reset}`);
+    console.log(`  ${c.cyan}${c.bold}║${c.reset}   ${c.green}*${c.reset} ${c.bold}Dev${c.reset}         ${c.dim}— writes all the code${c.reset}                   ${c.cyan}${c.bold}║${c.reset}`);
+    console.log(`  ${c.cyan}${c.bold}║${c.reset}   ${c.green}*${c.reset} ${c.bold}Reviewer1${c.reset}   ${c.dim}— independent code review${c.reset}               ${c.cyan}${c.bold}║${c.reset}`);
+    console.log(`  ${c.cyan}${c.bold}║${c.reset}   ${c.green}*${c.reset} ${c.bold}Reviewer2${c.reset}   ${c.dim}— independent code review${c.reset}               ${c.cyan}${c.bold}║${c.reset}`);
+    console.log(`  ${c.cyan}${c.bold}║${c.reset}                                                          ${c.cyan}${c.bold}║${c.reset}`);
+    console.log(`  ${c.cyan}${c.bold}║${c.reset}   4 agents. Full GitHub workflow. Runs while you sleep.  ${c.cyan}${c.bold}║${c.reset}`);
+    console.log(`  ${c.cyan}${c.bold}║${c.reset}                                                          ${c.cyan}${c.bold}║${c.reset}`);
+    console.log(`  ${c.cyan}${c.bold}╚══════════════════════════════════════════════════════════╝${c.reset}`);
+    console.log("");
+    console.log(`  ${c.green}*${c.reset} Server running at ${c.cyan}${dashboardUrl}${c.reset}${serverPid ? ` ${c.dim}(PID: ${serverPid})${c.reset}` : ""}`);
+    console.log(`  ${c.green}*${c.reset} Config saved to ${c.dim}${CONFIG_PATH}${c.reset}`);
+    console.log("");
+    console.log(`  ${c.cyan}${c.bold}--- Create Your First Project ---${c.reset}`);
+    console.log("");
+    console.log(`  Your browser is opening now. If not, visit:`);
+    console.log("");
+    console.log(`    ${c.cyan}${c.bold}${dashboardUrl}/setup${c.reset}`);
+    console.log("");
+    console.log(`    ${c.dim}1.${c.reset} Connect a GitHub repo`);
+    console.log(`    ${c.dim}2.${c.reset} Pick models for each agent`);
+    console.log(`    ${c.dim}3.${c.reset} Hit Start — your team takes it from there`);
+    console.log("");
+    console.log(`  ${c.dim}Commands:${c.reset}`);
+    console.log(`    ${c.dim}npx quadwork start${c.reset}    — restart everything`);
+    console.log(`    ${c.dim}npx quadwork stop${c.reset}     — shut it all down`);
+    console.log("");
+    console.log(`  ${c.green}${c.bold}Happy shipping!${c.reset}`);
+    console.log("");
 
     // Open browser
     const openCmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
