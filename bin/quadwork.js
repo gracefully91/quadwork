@@ -123,9 +123,33 @@ function askYN(rl, question, defaultYes = false) {
   });
 }
 
+// Migration: rename old agent keys to new ones
+const AGENT_KEY_MAP = { t1: "head", t2a: "reviewer1", t2b: "reviewer2", t3: "dev" };
+
+function migrateAgentKeys(config) {
+  let changed = false;
+  if (config.projects) {
+    for (const project of config.projects) {
+      if (!project.agents) continue;
+      for (const [oldKey, newKey] of Object.entries(AGENT_KEY_MAP)) {
+        if (project.agents[oldKey] && !project.agents[newKey]) {
+          project.agents[newKey] = project.agents[oldKey];
+          delete project.agents[oldKey];
+          changed = true;
+        }
+      }
+    }
+  }
+  if (changed) {
+    try { writeConfig(config); } catch {}
+  }
+  return config;
+}
+
 function readConfig() {
   try {
-    return JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8"));
+    const config = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8"));
+    return migrateAgentKeys(config);
   } catch {
     return { port: 8400, agentchattr_url: "http://127.0.0.1:8300", projects: [] };
   }
