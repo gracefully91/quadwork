@@ -7,6 +7,7 @@ const PRESETS = [
   { label: "4 hours", seconds: 14400 },
   { label: "8 hours", seconds: 28800 },
   { label: "Until stopped", seconds: 0 },
+  { label: "Custom...", seconds: -1 },
 ];
 
 function formatTime(seconds: number): string {
@@ -21,6 +22,8 @@ export default function CaffeinateWidget() {
   const [remaining, setRemaining] = useState<number | null>(null);
   const [platform, setPlatform] = useState<string>("");
   const [showPresets, setShowPresets] = useState(false);
+  const [showCustom, setShowCustom] = useState(false);
+  const [customHours, setCustomHours] = useState("1");
 
   const poll = useCallback(() => {
     fetch("/api/caffeinate/status")
@@ -95,13 +98,34 @@ export default function CaffeinateWidget() {
           </p>
           {PRESETS.map((p) => (
             <button
-              key={p.seconds}
-              onClick={() => start(p.seconds)}
+              key={p.label}
+              onClick={() => {
+                if (p.seconds === -1) { setShowCustom(true); }
+                else start(p.seconds);
+              }}
               className="w-full text-left px-3 py-1.5 text-[11px] text-text hover:bg-[#1a1a1a] transition-colors"
             >
               {p.label}
             </button>
           ))}
+          {showCustom && (
+            <div className="flex items-center gap-1 px-3 py-1.5 border-t border-border">
+              <input
+                type="number"
+                min="1"
+                value={customHours}
+                onChange={(e) => setCustomHours(e.target.value)}
+                className="w-12 bg-transparent border border-border px-1 py-0.5 text-[11px] text-text outline-none focus:border-accent"
+              />
+              <span className="text-[10px] text-text-muted">hours</span>
+              <button
+                onClick={() => { const h = parseFloat(customHours); if (h > 0) start(Math.round(h * 3600)); }}
+                className="px-2 py-0.5 bg-accent text-bg text-[10px] font-semibold hover:bg-accent-dim transition-colors"
+              >
+                Start
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
