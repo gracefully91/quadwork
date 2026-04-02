@@ -735,7 +735,11 @@ async function cmdInit() {
     console.log(`  ${c.cyan}${c.bold}║${c.reset}                                                          ${c.cyan}${c.bold}║${c.reset}`);
     console.log(`  ${c.cyan}${c.bold}╚══════════════════════════════════════════════════════════╝${c.reset}`);
     console.log("");
-    console.log(`  ${c.green}*${c.reset} Server running at ${c.cyan}${dashboardUrl}${c.reset}${serverPid ? ` ${c.dim}(PID: ${serverPid})${c.reset}` : ""}`);
+    if (serverPid) {
+      console.log(`  ${c.green}*${c.reset} Server running at ${c.cyan}${dashboardUrl}${c.reset} ${c.dim}(PID: ${serverPid})${c.reset}`);
+    } else {
+      console.log(`  ${c.yellow}*${c.reset} Server not started — run ${c.dim}npx quadwork start${c.reset} to launch`);
+    }
     console.log(`  ${c.green}*${c.reset} Config saved to ${c.dim}${CONFIG_PATH}${c.reset}`);
     console.log("");
     console.log(`  ${c.cyan}${c.bold}--- Create Your First Project ---${c.reset}`);
