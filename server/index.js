@@ -445,36 +445,24 @@ if (fs.existsSync(outDir)) {
   app.use(express.static(outDir, { redirect: false, extensions: ["html"] }));
 }
 
-// SPA fallback: serve the correct pre-rendered HTML for dynamic routes.
-// Static export only generates templates for placeholder params (e.g. /project/_),
-// so we map real dynamic segments back to those template files.
+// SPA fallback: serve a minimal app shell for dynamic routes to avoid
+// React hydration mismatch from stale RSC payload in pre-rendered templates.
 app.use((req, res, next) => {
   if ((req.method !== "GET" && req.method !== "HEAD") || req.path.startsWith("/api/")) {
     return next();
   }
-
-  // Map dynamic routes to their pre-rendered template HTML
-  const dynamicRoutes = [
-    { pattern: /^\/project\/[^/]+\/memory\/?$/, template: "project/_/memory.html" },
-    { pattern: /^\/project\/[^/]+\/queue\/?$/, template: "project/_/queue.html" },
-    { pattern: /^\/project\/[^/]+\/?$/, template: "project/_.html" },
-  ];
-
-  for (const route of dynamicRoutes) {
-    if (route.pattern.test(req.path)) {
-      const templatePath = path.join(outDir, route.template);
-      if (fs.existsSync(templatePath)) {
-        return res.sendFile(templatePath);
-      }
-    }
-  }
-
-  // Default fallback to index.html
-  const indexPath = path.join(outDir, "index.html");
-  if (fs.existsSync(indexPath)) {
-    res.sendFile(indexPath);
+  // Serve the app shell (layout + JS, no route content) for dynamic routes
+  const shellPath = path.join(outDir, "app-shell.html");
+  if (fs.existsSync(shellPath)) {
+    res.sendFile(shellPath);
   } else {
-    res.status(503).send("Frontend not built. Run: npm run build");
+    // Fallback to index.html if shell not built
+    const indexPath = path.join(outDir, "index.html");
+    if (fs.existsSync(indexPath)) {
+      res.sendFile(indexPath);
+    } else {
+      res.status(503).send("Frontend not built. Run: npm run build");
+    }
   }
 });
 

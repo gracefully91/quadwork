@@ -6,5 +6,5 @@ export function generateStaticParams() {
 }
 
 export default function ProjectPage() {
-  return <div suppressHydrationWarning className="w-full h-full"><ProjectPageClient /></div>;
+  return <ProjectPageClient />;
 }

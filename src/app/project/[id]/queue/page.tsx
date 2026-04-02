@@ -5,5 +5,5 @@ export function generateStaticParams() {
 }
 
 export default function QueuePage() {
-  return <div suppressHydrationWarning><QueuePageClient /></div>;
+  return <QueuePageClient />;
 }
