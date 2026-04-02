@@ -107,7 +107,7 @@ app.get("/api/agents", (_req, res) => {
 
 // Per-project AgentChattr lifecycle: /api/agentchattr/:project/:action
 // Backward compat: /api/agentchattr/:action uses first project
-app.post("/api/agentchattr/:projectOrAction/:action?", (req, res) => {
+function handleAgentChattr(req, res) {
   let projectId, action;
   if (req.params.action) {
     projectId = req.params.projectOrAction;
@@ -197,7 +197,9 @@ app.post("/api/agentchattr/:projectOrAction/:action?", (req, res) => {
   } else {
     res.status(400).json({ error: "Unknown action" });
   }
-});
+}
+app.post("/api/agentchattr/:projectOrAction/:action", handleAgentChattr);
+app.post("/api/agentchattr/:projectOrAction", handleAgentChattr);
 
 // --- Lifecycle: start spawns PTY (visible in terminal panel) ---
 
