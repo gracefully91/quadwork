@@ -1,7 +1,9 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
-import ProjectDashboard from "@/components/ProjectDashboard";
+
+const ProjectDashboard = dynamic(() => import("@/components/ProjectDashboard"), { ssr: false });
 
 export default function ProjectPageClient() {
   const pathname = usePathname();

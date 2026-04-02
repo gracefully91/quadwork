@@ -1,7 +1,9 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
-import QueueManager from "@/components/QueueManager";
+
+const QueueManager = dynamic(() => import("@/components/QueueManager"), { ssr: false });
 
 export default function QueuePageClient() {
   const pathname = usePathname();
