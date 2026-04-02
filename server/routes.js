@@ -456,6 +456,44 @@ function exec(cmd, args, opts) {
   }
 }
 
+// ─── GitHub helpers for Setup Wizard ──────────────────────────────────────
+
+// GitHub user info
+router.get("/api/github/user", (_req, res) => {
+  try {
+    const out = execFileSync("gh", ["api", "user", "--jq", "{login: .login}"], { encoding: "utf-8", timeout: 10000 });
+    res.json(JSON.parse(out));
+  } catch {
+    res.status(502).json({ error: "GitHub CLI not authenticated" });
+  }
+});
+
+// GitHub repo list for an owner
+router.get("/api/github/repos", (req, res) => {
+  const owner = req.query.owner;
+  if (!owner) return res.status(400).json({ error: "Missing owner" });
+  try {
+    const out = execFileSync("gh", ["repo", "list", String(owner), "--json", "name,description,isPrivate", "--limit", "50"], { encoding: "utf-8", timeout: 15000 });
+    res.json(JSON.parse(out));
+  } catch {
+    res.json([]);
+  }
+});
+
+// Save reviewer token securely
+router.post("/api/setup/save-token", (req, res) => {
+  const { token } = req.body;
+  if (!token) return res.status(400).json({ error: "Missing token" });
+  const tokenPath = path.join(os.homedir(), ".quadwork", "reviewer-token");
+  const dir = path.dirname(tokenPath);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(tokenPath, token.trim() + "\n", { mode: 0o600 });
+  try { fs.chmodSync(tokenPath, 0o600); } catch {}
+  res.json({ ok: true, path: tokenPath });
+});
+
+// ─── Setup Wizard ─────────────────────────────────────────────────────────
+
 router.post("/api/setup", (req, res) => {
   const step = req.query.step;
   const body = req.body || {};
