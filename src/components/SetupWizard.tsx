@@ -396,7 +396,7 @@ export default function SetupWizard() {
                     className="accent-accent"
                   />
                   <span className="text-[11px] text-text-muted">
-                    Enable branch protection on <code className="text-accent">main</code> (recommended)
+                    Enable branch protection on <code className="text-accent">main</code>
                   </span>
                 </label>
 
@@ -533,18 +533,29 @@ export default function SetupWizard() {
             {/* Step 4: Working Directory */}
             {step?.id === "workdir" && (
               <div>
-                <h2 className="text-sm font-semibold text-text mb-1">Set working directory</h2>
-                <p className="text-[11px] text-text-muted mb-4">
-                  The root directory where your project lives (or will be cloned to).
-                  Worktrees will be created as sibling directories:
-                  <code className="text-accent ml-1">{workingDir ? `${workingDir.split("/").pop()}-head/` : "project-head/"}</code>, etc.
+                <h2 className="text-sm font-semibold text-text mb-1">Where is your project?</h2>
+                <p className="text-[11px] text-text-muted mb-3">
+                  Your project&apos;s git repository on your local machine. QuadWork will create 4 agent workspaces next to this directory.
                 </p>
+                <div className="border border-border bg-bg-surface p-3 mb-4 text-[11px] text-text-muted font-mono space-y-0.5">
+                  <p className="text-text-muted">~/Projects/</p>
+                  <p className="text-accent pl-2">{repo ? repo.split("/")[1] : "project"}/              &larr; your repo (this path)</p>
+                  <p className="text-text-muted pl-2">{repo ? repo.split("/")[1] : "project"}-head/         &larr; Head agent workspace</p>
+                  <p className="text-text-muted pl-2">{repo ? repo.split("/")[1] : "project"}-dev/          &larr; Dev agent workspace</p>
+                  <p className="text-text-muted pl-2">{repo ? repo.split("/")[1] : "project"}-reviewer1/    &larr; Reviewer1 workspace</p>
+                  <p className="text-text-muted pl-2">{repo ? repo.split("/")[1] : "project"}-reviewer2/    &larr; Reviewer2 workspace</p>
+                </div>
                 <input
                   value={workingDir}
                   onChange={(e) => setWorkingDir(e.target.value)}
-                  placeholder="/path/to/project"
-                  className="w-full bg-transparent border border-border px-2 py-1.5 text-[12px] text-text outline-none focus:border-accent mb-4"
+                  placeholder={`~/Projects/${repo ? repo.split("/")[1] : "project"}`}
+                  className="w-full bg-transparent border border-border px-2 py-1.5 text-[12px] text-text outline-none focus:border-accent mb-2"
                 />
+                <p className="text-[10px] text-text-muted mb-4">
+                  Enter the path to an existing local clone, or a new path to clone into.
+                  If the directory doesn&apos;t exist or isn&apos;t a git repo, the setup will clone it for you.
+                </p>
+                {step.error && <p className="text-[11px] text-error mb-2">{step.error}</p>}
                 <button
                   onClick={goNext}
                   disabled={!workingDir.trim()}

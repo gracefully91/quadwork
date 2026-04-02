@@ -468,13 +468,16 @@ router.get("/api/github/user", (_req, res) => {
   }
 });
 
-// GitHub repo list for an owner
+// GitHub repo list for an owner (only repos with push access)
 router.get("/api/github/repos", (req, res) => {
   const owner = req.query.owner;
   if (!owner) return res.status(400).json({ error: "Missing owner" });
   try {
-    const out = execFileSync("gh", ["repo", "list", String(owner), "--json", "name,description,isPrivate", "--limit", "50"], { encoding: "utf-8", timeout: 15000 });
-    res.json(JSON.parse(out));
+    const out = execFileSync("gh", ["repo", "list", String(owner), "--json", "name,description,isPrivate,viewerPermission", "--limit", "50"], { encoding: "utf-8", timeout: 15000 });
+    const repos = JSON.parse(out);
+    // Filter to repos with push access (ADMIN, MAINTAIN, WRITE)
+    const pushAccess = new Set(["ADMIN", "MAINTAIN", "WRITE"]);
+    res.json(repos.filter((r) => pushAccess.has(r.viewerPermission)));
   } catch {
     res.json([]);
   }
@@ -502,8 +505,16 @@ router.post("/api/setup", (req, res) => {
     case "verify-repo": {
       const repo = body.repo;
       if (!repo || !REPO_RE.test(repo)) return res.json({ ok: false, error: "Invalid repo format (use owner/repo)" });
-      const result = exec("gh", ["repo", "view", repo, "--json", "name,owner"]);
-      return res.json({ ok: result.ok, error: result.ok ? undefined : "Cannot access repo. Check gh auth and repo permissions." });
+      const result = exec("gh", ["repo", "view", repo, "--json", "name,owner,viewerPermission"]);
+      if (!result.ok) return res.json({ ok: false, error: "Cannot access repo. Check gh auth and repo permissions." });
+      try {
+        const info = JSON.parse(result.output);
+        const pushAccess = new Set(["ADMIN", "MAINTAIN", "WRITE"]);
+        if (!pushAccess.has(info.viewerPermission)) {
+          return res.json({ ok: false, error: "You don't have push access to this repo. Agents need push access to create branches and PRs." });
+        }
+      } catch {}
+      return res.json({ ok: true });
     }
     case "create-worktrees": {
       const workingDir = body.workingDir;
