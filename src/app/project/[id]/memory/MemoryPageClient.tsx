@@ -1,7 +1,9 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
-import MemoryDashboard from "@/components/MemoryDashboard";
+
+const MemoryDashboard = dynamic(() => import("@/components/MemoryDashboard"), { ssr: false });
 
 export default function MemoryPageClient() {
   const pathname = usePathname();
