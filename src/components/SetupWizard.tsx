@@ -38,6 +38,8 @@ export default function SetupWizard() {
   // Form state
   const [projectName, setProjectName] = useState("");
   const [repo, setRepo] = useState("");
+  // Per-project AgentChattr config (populated by agentchattr-config step)
+  const [chattrConfig, setChattrConfig] = useState<{ agentchattr_token?: string; agentchattr_port?: number; mcp_http_port?: number; mcp_sse_port?: number }>({});
   const [backends, setBackends] = useState<Record<string, string>>({
     head: "claude", reviewer1: "claude", reviewer2: "claude", dev: "claude",
   });
@@ -112,7 +114,7 @@ export default function SetupWizard() {
   const saveConfig = async () => {
     // Use directory basename as project ID (matches CLI wizard)
     const id = workingDir.split("/").pop() || projectName.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
-    const result = await apiCall("add-config", { id, name: projectName, repo, workingDir, backends });
+    const result = await apiCall("add-config", { id, name: projectName, repo, workingDir, backends, ...chattrConfig });
     if (result.ok) {
       updateStep(currentStep, { status: "done" });
       setTimeout(() => router.push(`/project/${id}`), 500);
@@ -317,9 +319,27 @@ export default function SetupWizard() {
               <div className="flex gap-2">
                 <button
                   onClick={async () => {
-                    const result = await apiCall("agentchattr-config", { workingDir, projectName, repo, backends });
-                    if (result.ok) goNext();
-                    else updateStep(currentStep, { status: "error", error: result.error });
+                    // Pre-compute available ports for the new project
+                    let agentchattr_port = 8300, mcp_http_port = 8200, mcp_sse_port = 8201;
+                    try {
+                      const cfgRes = await fetch("/api/config");
+                      if (cfgRes.ok) {
+                        const cfg = await cfgRes.json();
+                        const usedChattr = new Set((cfg.projects || []).map((p: { agentchattr_url?: string }) => {
+                          try { return parseInt(new URL(p.agentchattr_url || "").port, 10); } catch { return 0; }
+                        }).filter(Boolean));
+                        const usedMcp = new Set((cfg.projects || []).flatMap((p: { mcp_http_port?: number; mcp_sse_port?: number }) => [p.mcp_http_port, p.mcp_sse_port]).filter(Boolean));
+                        while (usedChattr.has(agentchattr_port)) agentchattr_port++;
+                        while (usedMcp.has(mcp_http_port)) mcp_http_port++;
+                        mcp_sse_port = mcp_http_port + 1;
+                        while (usedMcp.has(mcp_sse_port)) mcp_sse_port++;
+                      }
+                    } catch {}
+                    const result = await apiCall("agentchattr-config", { workingDir, projectName, repo, backends, agentchattr_port, mcp_http_port, mcp_sse_port });
+                    if (result.ok) {
+                      setChattrConfig({ agentchattr_token: result.agentchattr_token, agentchattr_port: result.agentchattr_port, mcp_http_port: result.mcp_http_port, mcp_sse_port: result.mcp_sse_port });
+                      goNext();
+                    } else updateStep(currentStep, { status: "error", error: result.error });
                   }}
                   disabled={loading}
                   className="px-4 py-1.5 bg-accent text-bg text-[12px] font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50"

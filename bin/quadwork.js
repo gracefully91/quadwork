@@ -380,6 +380,27 @@ function writeAgentChattrConfig(setup, configTomlPath, { skipInstall = false } =
     );
   }
 
+  // Per-project: isolated data dir and port
+  const dataDir = path.join(path.dirname(configTomlPath), "data");
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+  // Read assigned port from config (set by writeQuadWorkConfig)
+  const existingConfig = readConfig();
+  const existingProject = existingConfig.projects?.find((p) => p.id === setup.projectName);
+  const chattrPort = existingProject?.agentchattr_url
+    ? new URL(existingProject.agentchattr_url).port
+    : "8300";
+  const mcpHttp = existingProject?.mcp_http_port || 8200;
+  const mcpSse = existingProject?.mcp_sse_port || 8201;
+  tomlContent = tomlContent.replace(/^port = \d+/m, `port = ${chattrPort}`);
+  tomlContent = tomlContent.replace(/^data_dir = .+/m, `data_dir = "${dataDir}"`);
+  // Add session_token to [server] section if project has one
+  const sessionToken = existingProject?.agentchattr_token || "";
+  if (sessionToken) {
+    tomlContent = tomlContent.replace(/^(data_dir = .+)$/m, `$1\nsession_token = "${sessionToken}"`);
+  }
+  tomlContent = tomlContent.replace(/^http_port = \d+/m, `http_port = ${mcpHttp}`);
+  tomlContent = tomlContent.replace(/^sse_port = \d+/m, `sse_port = ${mcpSse}`);
+
   // Write config.toml
   const configDir = path.dirname(configTomlPath);
   if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
@@ -414,8 +435,9 @@ function writeAgentChattrConfig(setup, configTomlPath, { skipInstall = false } =
     acProc.unref();
     if (acProc.pid) {
       ok(`AgentChattr started (PID: ${acProc.pid})`);
-      const pidFile = path.join(CONFIG_DIR, "agentchattr.pid");
+      // Per-project PID file
       if (!fs.existsSync(CONFIG_DIR)) fs.mkdirSync(CONFIG_DIR, { recursive: true });
+      const pidFile = path.join(CONFIG_DIR, `agentchattr-${setup.projectName}.pid`);
       fs.writeFileSync(pidFile, String(acProc.pid));
     } else {
       warn("Could not start AgentChattr — start manually: agentchattr --config " + configTomlPath);
@@ -488,12 +510,17 @@ async function setupAddons(rl, setup, configTomlPath) {
           bridge_dir: telegramDir,
         };
 
+        // Resolve per-project AgentChattr URL
+        const projectCfg = readConfig();
+        const projectEntry = projectCfg.projects?.find((p) => p.id === setup.projectName);
+        const projectChattrUrl = projectEntry?.agentchattr_url || "http://127.0.0.1:8300";
+
         // Append telegram section to config.toml (token read from env at runtime)
         const telegramSection = `
 [telegram]
 bot_token = "env:${envKey}"
 chat_id = "${chatId}"
-agentchattr_url = "http://127.0.0.1:8300"
+agentchattr_url = "${projectChattrUrl}"
 poll_interval = 2
 bridge_sender = "telegram-bridge"
 `;
@@ -505,7 +532,7 @@ bridge_sender = "telegram-bridge"
         if (fs.existsSync(bridgeScript)) {
           log("Starting Telegram bridge...");
           const bridgeToml = path.join(CONFIG_DIR, `telegram-${setup.projectName}.toml`);
-          const bridgeTomlContent = `[telegram]\nbot_token = "${botToken}"\nchat_id = "${chatId}"\n\n[agentchattr]\nurl = "http://127.0.0.1:8300"\n`;
+          const bridgeTomlContent = `[telegram]\nbot_token = "${botToken}"\nchat_id = "${chatId}"\n\n[agentchattr]\nurl = "${projectChattrUrl}"\n`;
           fs.writeFileSync(bridgeToml, bridgeTomlContent, { mode: 0o600 });
           fs.chmodSync(bridgeToml, 0o600);
           const bridgeProc = spawn("python3", [bridgeScript, "--config", bridgeToml], {
@@ -610,9 +637,25 @@ function writeQuadWorkConfig(setup) {
     };
   }
 
+  // Auto-assign per-project AgentChattr and MCP ports (scan existing to avoid collisions)
+  const existingIdx = config.projects.findIndex((p) => p.id === setup.projectName);
+  const usedChattrPorts = new Set(config.projects.map((p) => {
+    try { return parseInt(new URL(p.agentchattr_url).port, 10); } catch { return 0; }
+  }).filter(Boolean));
+  const usedMcpPorts = new Set(config.projects.flatMap((p) => [p.mcp_http_port, p.mcp_sse_port]).filter(Boolean));
+  let chattrPort = 8300;
+  while (usedChattrPorts.has(chattrPort)) chattrPort++;
+  let mcp_http = 8200;
+  while (usedMcpPorts.has(mcp_http)) mcp_http++;
+  let mcp_sse = mcp_http + 1;
+  while (usedMcpPorts.has(mcp_sse)) mcp_sse++;
+  project.agentchattr_url = `http://127.0.0.1:${chattrPort}`;
+  project.agentchattr_token = require("crypto").randomBytes(16).toString("hex");
+  project.mcp_http_port = mcp_http;
+  project.mcp_sse_port = mcp_sse;
+
   // Upsert project
-  const idx = config.projects.findIndex((p) => p.id === setup.projectName);
-  if (idx >= 0) config.projects[idx] = project;
+  if (existingIdx >= 0) config.projects[existingIdx] = project;
   else config.projects.push(project);
 
   writeConfig(config);
@@ -647,15 +690,15 @@ async function cmdInit() {
     const setup = await setupAgents(rl, repo);
     if (!setup) { rl.close(); process.exit(1); }
 
-    // Step 4: AgentChattr config (skip install if prereqs already flagged it missing)
-    const configTomlPath = path.join(setup.absDir, "config.toml");
+    // Write QuadWork config first (assigns per-project ports)
+    writeQuadWorkConfig(setup);
+
+    // Step 4: AgentChattr config (reads assigned ports from saved config)
+    const configTomlPath = path.join(setup.absDir, "agentchattr", "config.toml");
     writeAgentChattrConfig(setup, configTomlPath, { skipInstall: !agentChattrFound });
 
     // Step 5: Optional add-ons
     await setupAddons(rl, setup, configTomlPath);
-
-    // Write QuadWork config
-    writeQuadWorkConfig(setup);
 
     // Done
     header("Setup Complete");
@@ -722,11 +765,12 @@ function cmdStart() {
   const pidFile = path.join(CONFIG_DIR, "server.pid");
   fs.writeFileSync(pidFile, String(server.pid));
 
-  // Start AgentChattr if installed and config.toml exists for first project
-  const firstProject = config.projects[0];
-  if (firstProject && which("agentchattr")) {
-    const configToml = path.join(firstProject.working_dir, "config.toml");
-    if (fs.existsSync(configToml)) {
+  // Start AgentChattr for each project that has a config.toml
+  if (which("agentchattr")) {
+    for (const project of config.projects) {
+      if (!project.working_dir) continue;
+      const configToml = path.join(project.working_dir, "agentchattr", "config.toml");
+      if (!fs.existsSync(configToml)) continue;
       const acProc = spawn("agentchattr", ["--config", configToml], {
         stdio: "ignore",
         detached: true,
@@ -734,8 +778,8 @@ function cmdStart() {
       acProc.on("error", () => {});
       acProc.unref();
       if (acProc.pid) {
-        ok(`AgentChattr started (PID: ${acProc.pid})`);
-        fs.writeFileSync(path.join(CONFIG_DIR, "agentchattr.pid"), String(acProc.pid));
+        ok(`AgentChattr started for ${project.id} (PID: ${acProc.pid})`);
+        fs.writeFileSync(path.join(CONFIG_DIR, `agentchattr-${project.id}.pid`), String(acProc.pid));
       }
     }
   }
@@ -774,7 +818,15 @@ function cmdStop() {
 
   let stopped = 0;
   if (stopPid("Telegram bridge", "telegram-bridge.pid")) stopped++;
+
+  // Stop per-project AgentChattr instances
+  const config = readConfig();
+  for (const project of (config.projects || [])) {
+    if (stopPid(`AgentChattr (${project.id})`, `agentchattr-${project.id}.pid`)) stopped++;
+  }
+  // Also stop legacy single-instance PID if present
   if (stopPid("AgentChattr", "agentchattr.pid")) stopped++;
+
   if (stopPid("Server", "server.pid")) stopped++;
 
   if (stopped === 0) warn("No running processes found");
@@ -796,10 +848,10 @@ async function cmdAddProject() {
     const setup = await setupAgents(rl, repo);
     if (!setup) { rl.close(); process.exit(1); }
 
-    const configTomlPath = path.join(setup.absDir, "config.toml");
-    writeAgentChattrConfig(setup, configTomlPath);
-
     writeQuadWorkConfig(setup);
+
+    const configTomlPath = path.join(setup.absDir, "agentchattr", "config.toml");
+    writeAgentChattrConfig(setup, configTomlPath);
 
     header("Project Added");
     log(`Project:      ${setup.projectName}`);
