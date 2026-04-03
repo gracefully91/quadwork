@@ -229,7 +229,7 @@ function ServerSection({ projectId }: { projectId: string }) {
       <div className="flex items-center gap-1.5 flex-wrap">
         <button
           onClick={handleStop}
-          disabled={loading === "stop"}
+          disabled={!!loading}
           className={`px-1.5 py-0.5 text-[10px] border transition-colors disabled:opacity-50 ${
             confirmStop
               ? "text-error border-error/60 bg-error/10 hover:bg-error/20"
@@ -240,14 +240,14 @@ function ServerSection({ projectId }: { projectId: string }) {
         </button>
         <button
           onClick={handleRestart}
-          disabled={loading === "restart"}
+          disabled={!!loading}
           className="px-1.5 py-0.5 text-[10px] text-text-muted border border-border hover:text-accent hover:border-accent/40 transition-colors disabled:opacity-50"
         >
           {loading === "restart" ? "..." : "Restart"}
         </button>
         <button
           onClick={handleReset}
-          disabled={loading === "reset"}
+          disabled={!!loading}
           className="px-1.5 py-0.5 text-[10px] text-text-muted border border-border hover:text-accent hover:border-accent/40 transition-colors disabled:opacity-50"
         >
           {loading === "reset" ? "..." : "Reset Agents"}
