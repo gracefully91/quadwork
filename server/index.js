@@ -249,6 +249,42 @@ function handleAgentChattr(req, res) {
 app.post("/api/agentchattr/:projectOrAction/:action", handleAgentChattr);
 app.post("/api/agentchattr/:projectOrAction", handleAgentChattr);
 
+// --- Reset agents: deregister all stale/duplicate slots ---
+
+app.post("/api/agents/:project/reset", async (req, res) => {
+  const projectId = req.params.project;
+  const { url: chattrUrl, token: chattrToken } = resolveProjectChattr(projectId);
+  const headers = {};
+  if (chattrToken) headers["x-session-token"] = chattrToken;
+
+  try {
+    // Fetch current agent status from AgentChattr
+    const statusRes = await fetch(`${chattrUrl}/api/status`, { headers });
+    if (!statusRes.ok) {
+      return res.status(statusRes.status).json({ ok: false, error: `AgentChattr status failed: ${statusRes.status}` });
+    }
+    const status = await statusRes.json();
+    const slots = status.agents || status.slots || [];
+
+    let cleared = 0;
+    for (const agent of slots) {
+      const name = typeof agent === "string" ? agent : agent.name || agent.sender;
+      if (!name) continue;
+      try {
+        const dereg = await fetch(`${chattrUrl}/api/deregister/${encodeURIComponent(name)}`, {
+          method: "POST",
+          headers,
+        });
+        if (dereg.ok) cleared++;
+      } catch {}
+    }
+
+    res.json({ ok: true, cleared, total: slots.length });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // --- Lifecycle: start spawns PTY (visible in terminal panel) ---
 
 app.post("/api/agents/:project/:agent/start", (req, res) => {

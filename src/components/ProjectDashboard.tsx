@@ -6,8 +6,7 @@ import TerminalGrid from "./TerminalGrid";
 import PanelHeader from "./PanelHeader";
 import ChatPanel from "./ChatPanel";
 import GitHubPanel from "./GitHubPanel";
-import TriggerWidget from "./TriggerWidget";
-import CaffeinateWidget from "./CaffeinateWidget";
+import ControlBar from "./ControlBar";
 
 const MIN_SIZE = 150; // px
 const DIVIDER = 4; // px
@@ -161,10 +160,7 @@ export default function ProjectDashboard({ projectId }: ProjectDashboardProps) {
         <div className="flex-1 min-h-0">
           <ChatPanel projectId={projectId} />
         </div>
-        <div className="flex items-center gap-2 px-2 py-1 border-t border-border">
-          <TriggerWidget projectId={projectId} />
-          <CaffeinateWidget />
-        </div>
+        <ControlBar projectId={projectId} />
       </div>
 
       {/* Vertical divider — bottom segment */}
