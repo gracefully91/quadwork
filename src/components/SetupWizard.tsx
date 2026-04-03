@@ -591,13 +591,35 @@ export default function SetupWizard() {
                         </label>
                       </div>
                       {reviewerTokenMode === "paste" ? (
-                        <input
-                          value={reviewerTokenValue}
-                          onChange={(e) => setReviewerTokenValue(e.target.value)}
-                          placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
-                          type="password"
-                          className="w-full bg-transparent border border-border px-2 py-1.5 text-[12px] text-text outline-none focus:border-accent"
-                        />
+                        <>
+                          <input
+                            value={reviewerTokenValue}
+                            onChange={(e) => setReviewerTokenValue(e.target.value)}
+                            placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+                            type="password"
+                            className="w-full bg-transparent border border-border px-2 py-1.5 text-[12px] text-text outline-none focus:border-accent"
+                          />
+                          <div className="mt-2 text-[10px] text-text-muted leading-relaxed">
+                            <p>Paste a GitHub <span className="text-text">Personal Access Token (classic)</span>.</p>
+                            <p className="mt-1">
+                              Create one at{" "}
+                              <a
+                                href="https://github.com/settings/tokens"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-accent hover:underline"
+                              >
+                                github.com/settings/tokens
+                              </a>
+                              {" "}&#8594; Generate new token (classic)
+                            </p>
+                            <p className="mt-1">
+                              Required permission: <span className="text-accent">repo</span> (Full control of private repositories)
+                              <br />
+                              <span className="text-text-muted">Needed for reading PRs, posting reviews, and approving/requesting changes</span>
+                            </p>
+                          </div>
+                        </>
                       ) : (
                         <>
                           <input
