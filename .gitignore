@@ -53,3 +53,4 @@ telegram_bridge_cursor.json
 # Test coverage
 coverage/
 .nyc_output/
+tsconfig.tsbuildinfo
