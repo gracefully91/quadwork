@@ -510,29 +510,60 @@ app.get("/api/triggers", (_req, res) => {
       lastSent: info.lastSent,
       nextAt: info.nextAt,
       lastError: info.lastError || null,
+      expiresAt: info.expiresAt || null,
     };
   }
   res.json(result);
 });
 
+function stopTrigger(project) {
+  const existing = triggers.get(project);
+  if (existing) {
+    if (existing.timer) clearInterval(existing.timer);
+    if (existing.durationTimer) clearTimeout(existing.durationTimer);
+  }
+  triggers.delete(project);
+}
+
 app.post("/api/triggers/:project/start", (req, res) => {
   const { project } = req.params;
-  const { interval } = req.body || {};
+  const { interval, duration } = req.body || {};
   const ms = (interval || 30) * 60 * 1000;
+  const durationMs = duration ? duration * 60 * 1000 : 0; // duration in minutes, 0 = indefinite
 
   const existing = triggers.get(project);
-  if (existing && existing.timer) clearInterval(existing.timer);
+  if (existing) {
+    if (existing.timer) clearInterval(existing.timer);
+    if (existing.durationTimer) clearTimeout(existing.durationTimer);
+  }
 
   const timer = setInterval(() => sendTriggerMessage(project), ms);
-  triggers.set(project, { interval: ms, timer, lastSent: null, nextAt: Date.now() + ms });
-  res.json({ ok: true, enabled: true, interval: ms, nextAt: Date.now() + ms });
+  const expiresAt = durationMs > 0 ? Date.now() + durationMs : null;
+
+  const triggerInfo = {
+    interval: ms,
+    timer,
+    lastSent: null,
+    nextAt: Date.now() + ms,
+    lastError: null,
+    expiresAt,
+    durationTimer: null,
+  };
+
+  // Auto-stop after duration
+  if (durationMs > 0) {
+    triggerInfo.durationTimer = setTimeout(() => {
+      stopTrigger(project);
+    }, durationMs);
+  }
+
+  triggers.set(project, triggerInfo);
+  res.json({ ok: true, enabled: true, interval: ms, nextAt: Date.now() + ms, expiresAt });
 });
 
 app.post("/api/triggers/:project/stop", (req, res) => {
   const { project } = req.params;
-  const existing = triggers.get(project);
-  if (existing && existing.timer) clearInterval(existing.timer);
-  triggers.delete(project);
+  stopTrigger(project);
   res.json({ ok: true, enabled: false });
 });
 
@@ -707,6 +738,7 @@ function syncTriggersFromConfig() {
   for (const [id, info] of triggers) {
     if (!activeIds.has(id)) {
       if (info.timer) clearInterval(info.timer);
+      if (info.durationTimer) clearTimeout(info.durationTimer);
       triggers.delete(id);
     }
   }

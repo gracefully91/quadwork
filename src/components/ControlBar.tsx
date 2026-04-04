@@ -9,12 +9,31 @@ interface TriggerInfo {
   interval: number;
   lastSent: number | null;
   nextAt: number | null;
+  expiresAt: number | null;
+}
+
+const DURATION_PRESETS = [
+  { label: "1 hour", minutes: 60 },
+  { label: "3 hours", minutes: 180 },
+  { label: "8 hours", minutes: 480 },
+  { label: "Until stopped", minutes: 0 },
+];
+
+function formatCountdown(ms: number): string {
+  if (ms <= 0) return "0m 0s";
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  const s = Math.floor((ms % 60000) / 1000);
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m ${s}s`;
 }
 
 function KeepAliveSection({ projectId }: { projectId: string }) {
   const [trigger, setTrigger] = useState<TriggerInfo | null>(null);
-  const [interval, setInterval_] = useState(30);
+  const [interval, setInterval_] = useState(15);
+  const [duration, setDuration] = useState(180); // minutes, 0 = indefinite
   const [countdown, setCountdown] = useState("");
+  const [expiresCountdown, setExpiresCountdown] = useState("");
 
   useEffect(() => {
     const poll = () => {
@@ -37,28 +56,37 @@ function KeepAliveSection({ projectId }: { projectId: string }) {
   }, [projectId]);
 
   useEffect(() => {
-    if (!trigger?.nextAt) {
+    if (!trigger?.nextAt && !trigger?.expiresAt) {
       setCountdown("");
+      setExpiresCountdown("");
       return;
     }
     const tick = () => {
-      const remaining = Math.max(0, (trigger.nextAt || 0) - Date.now());
-      const mins = Math.floor(remaining / 60000);
-      const secs = Math.floor((remaining % 60000) / 1000);
-      setCountdown(`${mins}m ${secs}s`);
+      if (trigger.nextAt) {
+        const remaining = Math.max(0, trigger.nextAt - Date.now());
+        setCountdown(formatCountdown(remaining));
+      }
+      if (trigger.expiresAt) {
+        const remaining = Math.max(0, trigger.expiresAt - Date.now());
+        setExpiresCountdown(formatCountdown(remaining));
+        // Auto-clear when expired
+        if (remaining <= 0) setTrigger(null);
+      } else {
+        setExpiresCountdown("");
+      }
     };
     tick();
     const id = window.setInterval(tick, 1000);
     return () => window.clearInterval(id);
-  }, [trigger?.nextAt]);
+  }, [trigger?.nextAt, trigger?.expiresAt]);
 
   const start = () => {
     fetch(
-      `/api/triggers?project=${encodeURIComponent(projectId)}&action=start`,
+      `/api/triggers/${encodeURIComponent(projectId)}/start`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ interval }),
+        body: JSON.stringify({ interval, duration }),
       }
     )
       .then((r) => r.json())
@@ -69,6 +97,7 @@ function KeepAliveSection({ projectId }: { projectId: string }) {
             interval: d.interval,
             lastSent: null,
             nextAt: d.nextAt,
+            expiresAt: d.expiresAt || null,
           });
       })
       .catch(() => {});
@@ -76,7 +105,7 @@ function KeepAliveSection({ projectId }: { projectId: string }) {
 
   const stop = () => {
     fetch(
-      `/api/triggers?project=${encodeURIComponent(projectId)}&action=stop`,
+      `/api/triggers/${encodeURIComponent(projectId)}/stop`,
       { method: "POST" }
     )
       .then((r) => r.json())
@@ -88,7 +117,7 @@ function KeepAliveSection({ projectId }: { projectId: string }) {
 
   const sendNow = () => {
     fetch(
-      `/api/triggers?project=${encodeURIComponent(projectId)}&action=send-now`,
+      `/api/triggers/${encodeURIComponent(projectId)}/send-now`,
       { method: "POST" }
     ).catch(() => {});
   };
@@ -104,44 +133,72 @@ function KeepAliveSection({ projectId }: { projectId: string }) {
         Send a check-in to all agents every:
       </div>
       {isEnabled ? (
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-accent" />
-            <span className="text-[11px] text-accent">Running</span>
-          </span>
-          <span className="text-[11px] text-text tabular-nums">
-            Next: {countdown}
-          </span>
-          <button
-            onClick={sendNow}
-            className="px-1.5 py-0.5 text-[10px] text-accent border border-accent/40 hover:bg-accent/10 transition-colors"
-          >
-            Send Now
-          </button>
-          <button
-            onClick={stop}
-            className="px-1.5 py-0.5 text-[10px] text-text-muted border border-border hover:text-error hover:border-error/40 transition-colors"
-          >
-            Stop
-          </button>
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+              <span className="text-[11px] text-accent">Running</span>
+            </span>
+            <span className="text-[11px] text-text tabular-nums">
+              Next: {countdown}
+            </span>
+            {expiresCountdown && (
+              <span className="text-[11px] text-text-muted tabular-nums">
+                Stops in: {expiresCountdown}
+              </span>
+            )}
+            {!trigger?.expiresAt && (
+              <span className="text-[10px] text-text-muted">
+                (until stopped)
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={sendNow}
+              className="px-1.5 py-0.5 text-[10px] text-accent border border-accent/40 hover:bg-accent/10 transition-colors"
+            >
+              Send Now
+            </button>
+            <button
+              onClick={stop}
+              className="px-1.5 py-0.5 text-[10px] text-text-muted border border-border hover:text-error hover:border-error/40 transition-colors"
+            >
+              Stop
+            </button>
+          </div>
         </div>
       ) : (
-        <div className="flex items-center gap-1.5">
-          <input
-            type="number"
-            value={interval}
-            onChange={(e) => setInterval_(parseInt(e.target.value, 10) || 30)}
-            min={1}
-            max={1440}
-            className="w-10 bg-transparent border border-border px-1 py-0.5 text-[11px] text-text outline-none focus:border-accent text-center"
-          />
-          <span className="text-[10px] text-text-muted">min</span>
-          <button
-            onClick={start}
-            className="px-2 py-0.5 text-[10px] text-bg bg-accent hover:bg-accent-dim font-semibold transition-colors"
-          >
-            Start
-          </button>
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center gap-1.5">
+            <input
+              type="number"
+              value={interval}
+              onChange={(e) => setInterval_(parseInt(e.target.value, 10) || 15)}
+              min={1}
+              max={1440}
+              className="w-10 bg-transparent border border-border px-1 py-0.5 text-[11px] text-text outline-none focus:border-accent text-center"
+            />
+            <span className="text-[10px] text-text-muted">min</span>
+            <span className="text-[10px] text-text-muted mx-0.5">for</span>
+            <select
+              value={duration}
+              onChange={(e) => setDuration(parseInt(e.target.value, 10))}
+              className="bg-transparent border border-border px-1 py-0.5 text-[11px] text-text outline-none focus:border-accent cursor-pointer"
+            >
+              {DURATION_PRESETS.map((p) => (
+                <option key={p.minutes} value={p.minutes} className="bg-bg-surface">
+                  {p.label}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={start}
+              className="px-2 py-0.5 text-[10px] text-bg bg-accent hover:bg-accent-dim font-semibold transition-colors"
+            >
+              Start
+            </button>
+          </div>
         </div>
       )}
     </div>
