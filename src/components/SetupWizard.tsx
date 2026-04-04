@@ -165,6 +165,27 @@ export default function SetupWizard() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [customPorts, setCustomPorts] = useState({ chattr: 0, mcpHttp: 0, mcpSse: 0 });
   const [autoDetectedPorts, setAutoDetectedPorts] = useState({ chattr: 0, mcpHttp: 0, mcpSse: 0 });
+  const [cliStatus, setCliStatus] = useState<{ claude: boolean; codex: boolean } | null>(null);
+
+  // Fetch CLI status on mount
+  useEffect(() => {
+    fetch("/api/cli-status")
+      .then((r) => r.json())
+      .then((status: { claude: boolean; codex: boolean }) => {
+        setCliStatus(status);
+        // Default all agents to the available CLI when only one is installed
+        const availableCli = status.claude && !status.codex ? "claude"
+          : !status.claude && status.codex ? "codex"
+          : null;
+        if (availableCli) {
+          setBackends({ head: availableCli, reviewer1: availableCli, reviewer2: availableCli, dev: availableCli });
+        } else if (status.claude && status.codex) {
+          // Both available — use mixed defaults for review diversity
+          setBackends({ head: "codex", dev: "claude", reviewer1: "codex", reviewer2: "claude" });
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Fetch GitHub user on mount
   useEffect(() => {
@@ -575,6 +596,31 @@ export default function SetupWizard() {
                 <p className="text-[11px] text-text-muted mb-4">
                   Each agent runs its own CLI instance. Pick the backend for each role.
                 </p>
+
+                {/* Single-CLI friendly message */}
+                {cliStatus && !cliStatus.claude && cliStatus.codex && (
+                  <div className="border border-accent/20 bg-accent/5 p-3 mb-4 text-[11px]">
+                    <p className="text-text">You have Codex CLI installed — great! All 4 agents will use Codex.</p>
+                    <p className="text-text-muted mt-1.5">
+                      Tip: Installing Claude Code too gives your team different AI perspectives,
+                      which can improve code review quality. You can add it anytime:
+                    </p>
+                    <p className="text-accent mt-1 font-mono text-[10px]">npm install -g @anthropic-ai/claude-code</p>
+                    <p className="text-text-muted mt-1.5">For now, Codex CLI handles everything perfectly. Let&apos;s continue!</p>
+                  </div>
+                )}
+                {cliStatus && cliStatus.claude && !cliStatus.codex && (
+                  <div className="border border-accent/20 bg-accent/5 p-3 mb-4 text-[11px]">
+                    <p className="text-text">You have Claude Code installed — great! All 4 agents will use Claude.</p>
+                    <p className="text-text-muted mt-1.5">
+                      Tip: Installing Codex CLI too gives your team different AI perspectives,
+                      which can improve code review quality. You can add it anytime:
+                    </p>
+                    <p className="text-accent mt-1 font-mono text-[10px]">npm install -g codex</p>
+                    <p className="text-text-muted mt-1.5">For now, Claude Code handles everything perfectly. Let&apos;s continue!</p>
+                  </div>
+                )}
+
                 <div className="border border-border mb-4">
                   {AGENTS.map((agent) => (
                     <div key={agent.key} className="flex items-center justify-between px-3 py-2 border-b border-border/50 last:border-b-0">
@@ -587,7 +633,16 @@ export default function SetupWizard() {
                         onChange={(e) => setBackends({ ...backends, [agent.key]: e.target.value })}
                         className="bg-transparent border border-border px-2 py-0.5 text-[11px] text-text outline-none focus:border-accent cursor-pointer ml-3"
                       >
-                        {BACKENDS.map((b) => <option key={b.value} value={b.value} className="bg-bg-surface">{b.label}</option>)}
+                        {BACKENDS.map((b) => (
+                          <option
+                            key={b.value}
+                            value={b.value}
+                            className="bg-bg-surface"
+                            disabled={cliStatus ? !cliStatus[b.value as keyof typeof cliStatus] : false}
+                          >
+                            {b.label}{cliStatus && !cliStatus[b.value as keyof typeof cliStatus] ? " (not installed)" : ""}
+                          </option>
+                        ))}
                       </select>
                     </div>
                   ))}

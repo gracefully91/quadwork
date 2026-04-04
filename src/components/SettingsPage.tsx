@@ -107,6 +107,7 @@ export default function SettingsPage() {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [autoAdded, setAutoAdded] = useState(false);
   const [daemonStatus, setDaemonStatus] = useState<Record<string, boolean>>({});
+  const [cliStatus, setCliStatus] = useState<{ claude: boolean; codex: boolean } | null>(null);
 
   const load = useCallback(() => {
     fetch("/api/config")
@@ -124,6 +125,14 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Fetch CLI status
+  useEffect(() => {
+    fetch("/api/cli-status")
+      .then((r) => r.json())
+      .then((status) => setCliStatus(status))
+      .catch(() => {});
+  }, []);
 
   // Poll telegram daemon status for each project
   useEffect(() => {
@@ -212,12 +221,22 @@ export default function SettingsPage() {
   const addProject = () => {
     if (!config) return;
     const id = `project-${Date.now()}`;
+    // Use CLI-status-aware defaults: if only one CLI installed, use it for all agents
+    const defaultCmd = cliStatus
+      ? (cliStatus.claude && !cliStatus.codex ? "claude"
+        : !cliStatus.claude && cliStatus.codex ? "codex"
+        : "claude")
+      : "claude";
+    const agents: Record<string, AgentConfig> = {};
+    for (const [key, val] of Object.entries(DEFAULT_AGENTS)) {
+      agents[key] = { ...val, command: defaultCmd };
+    }
     const newProject: ProjectConfig = {
       id,
       name: "New Project",
       repo: "owner/repo",
       working_dir: "",
-      agents: { ...DEFAULT_AGENTS },
+      agents,
     };
     setConfig({ ...config, projects: [...config.projects, newProject] });
     setExpanded({ ...expanded, [id]: true });
@@ -386,6 +405,19 @@ export default function SettingsPage() {
                   {/* Agents table */}
                   <div className="mt-4">
                     <h3 className="text-[10px] text-text-muted uppercase tracking-wider mb-2">Agents</h3>
+                    {cliStatus && (cliStatus.claude ? !cliStatus.codex : cliStatus.codex) && (
+                      <div className="border border-accent/20 bg-accent/5 p-2 mb-2 text-[10px]">
+                        <span className="text-text">
+                          {cliStatus.claude ? "Only Claude Code" : "Only Codex CLI"} is installed.
+                        </span>
+                        <span className="text-text-muted ml-1">
+                          Install {cliStatus.claude ? "Codex" : "Claude Code"} for more backend options:
+                        </span>
+                        <code className="text-accent ml-1">
+                          {cliStatus.claude ? "npm install -g codex" : "npm install -g @anthropic-ai/claude-code"}
+                        </code>
+                      </div>
+                    )}
                     <div className="border border-border">
                       <div className="grid grid-cols-5 gap-0 px-2 py-1 border-b border-border text-[10px] text-text-muted uppercase">
                         <span>Name</span>
@@ -411,9 +443,19 @@ export default function SettingsPage() {
                               value={agent.command || "claude"}
                               onChange={(e) => updateAgent(idx, agentId, { command: e.target.value })}
                               className="bg-transparent text-[11px] text-text outline-none border border-border px-1 py-0.5 focus:border-accent"
+                              title={cliStatus && Object.values(cliStatus).filter(Boolean).length === 1
+                                ? `Only one CLI installed — install the other for more options`
+                                : undefined}
                             >
                               {BACKENDS.map((b) => (
-                                <option key={b.value} value={b.value} className="bg-bg-surface">{b.label}</option>
+                                <option
+                                  key={b.value}
+                                  value={b.value}
+                                  className="bg-bg-surface"
+                                  disabled={cliStatus ? !cliStatus[b.value as keyof typeof cliStatus] : false}
+                                >
+                                  {b.label}{cliStatus && !cliStatus[b.value as keyof typeof cliStatus] ? " (not installed)" : ""}
+                                </option>
                               ))}
                             </select>
                             <select

@@ -496,28 +496,52 @@ async function setupGitHub(rl) {
 async function setupAgents(rl, repo) {
   header("Step 3: Agent Configuration");
 
-  // Prompt for CLI backend
+  // Detect available CLIs
   const hasClaude = which("claude");
   const hasCodex = which("codex");
+  const bothAvailable = hasClaude && hasCodex;
+  const onlyOneCli = (hasClaude && !hasCodex) || (!hasClaude && hasCodex);
   let defaultBackend = hasClaude ? "claude" : "codex";
-  log("Choose which AI CLI to run in agent terminals. Claude Code (`claude`) or OpenAI Codex (`codex`).");
-  const backend = await ask(rl, "Default CLI backend (claude/codex)", defaultBackend);
-  if (backend !== "claude" && backend !== "codex") {
-    fail("Backend must be 'claude' or 'codex'");
+
+  const backends = {};
+
+  if (onlyOneCli) {
+    // Single-CLI mode: default all agents, no prompt needed
+    const cliName = hasClaude ? "Claude Code" : "Codex CLI";
+    const otherName = hasClaude ? "Codex CLI" : "Claude Code";
+    const installCmd = hasClaude ? "npm install -g codex" : "npm install -g @anthropic-ai/claude-code";
+    ok(`${cliName} detected — all 4 agents will use ${cliName}.`);
+    console.log("");
+    log(`Tip: Installing ${otherName} too gives your team different AI perspectives,`);
+    log(`which can improve code review quality. You can add it anytime:`);
+    log(`  → ${installCmd}`);
+    console.log("");
+    for (const agent of AGENTS) backends[agent] = defaultBackend;
+  } else if (bothAvailable) {
+    log("Both Claude Code and Codex CLI are available.");
+    log("Choose which AI CLI to run in agent terminals.");
+    const backend = await ask(rl, "Default CLI backend (claude/codex)", defaultBackend);
+    if (backend !== "claude" && backend !== "codex") {
+      fail("Backend must be 'claude' or 'codex'");
+      return null;
+    }
+    defaultBackend = backend;
+
+    // Per-agent backend selection
+    const customPerAgent = await askYN(rl, "Use same backend for all agents?", true);
+    if (customPerAgent) {
+      for (const agent of AGENTS) backends[agent] = backend;
+    } else {
+      for (const agent of AGENTS) {
+        const agentBackend = await ask(rl, `${agent.toUpperCase()} backend (claude/codex)`, backend);
+        backends[agent] = (agentBackend === "claude" || agentBackend === "codex") ? agentBackend : backend;
+      }
+    }
+  } else {
+    fail("No AI CLI found — install Claude Code or Codex CLI first.");
     return null;
   }
-
-  // Per-agent backend selection
-  const backends = {};
-  const customPerAgent = await askYN(rl, "Use same backend for all agents?", true);
-  if (customPerAgent) {
-    for (const agent of AGENTS) backends[agent] = backend;
-  } else {
-    for (const agent of AGENTS) {
-      const agentBackend = await ask(rl, `${agent.toUpperCase()} backend (claude/codex)`, backend);
-      backends[agent] = (agentBackend === "claude" || agentBackend === "codex") ? agentBackend : backend;
-    }
-  }
+  const backend = defaultBackend;
 
   log("Path to your local clone of the repo. Four worktrees will be created next to it");
   log("(e.g., project-head/, project-reviewer1/, project-reviewer2/, project-dev/).");

@@ -26,6 +26,26 @@ app.get("/api/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
+// --- CLI status detection ---
+
+const { execSync } = require("child_process");
+
+function isCliInstalled(cmd) {
+  try {
+    execSync(`which ${cmd}`, { encoding: "utf-8", stdio: "pipe" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+app.get("/api/cli-status", (_req, res) => {
+  res.json({
+    claude: isCliInstalled("claude"),
+    codex: isCliInstalled("codex"),
+  });
+});
+
 // --- Port availability check ---
 
 function checkPort(port) {
