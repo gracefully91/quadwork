@@ -500,15 +500,14 @@ async function checkPrereqs(rl) {
       log("  A browser window will open for authentication.");
       const doLogin = await askYN(rl, "Log in to GitHub now?", true);
       if (doLogin) {
-        try {
-          execSync("gh auth login -w", { stdio: "inherit", timeout: 120000 });
-          const ghAuth2 = run("gh auth status 2>&1");
-          if (ghAuth2 && ghAuth2.includes("Logged in")) {
-            ok("GitHub CLI — authenticated");
-          } else {
-            warn("Authentication may not have completed — you can run 'gh auth login' later.");
-          }
-        } catch {
+        // Pause readline so the interactive command can use stdin
+        rl.pause();
+        process.stdin.setRawMode && process.stdin.setRawMode(false);
+        const { status } = require("child_process").spawnSync("gh", ["auth", "login", "-w"], { stdio: "inherit", timeout: 600000 });
+        rl.resume();
+        if (status === 0) {
+          ok("GitHub CLI — authenticated");
+        } else {
           warn("Authentication cancelled or failed — you can run 'gh auth login' later.");
         }
       } else {
@@ -525,10 +524,13 @@ async function checkPrereqs(rl) {
         warn("Claude Code needs authentication.");
         const doLogin = await askYN(rl, "Log in to Claude Code now?", true);
         if (doLogin) {
-          try {
-            execSync("claude auth login", { stdio: "inherit", timeout: 120000 });
+          rl.pause();
+          process.stdin.setRawMode && process.stdin.setRawMode(false);
+          const { status } = require("child_process").spawnSync("claude", ["auth", "login"], { stdio: "inherit", timeout: 600000 });
+          rl.resume();
+          if (status === 0) {
             ok("Claude Code — authentication complete");
-          } catch {
+          } else {
             warn("Authentication cancelled or failed — you can run 'claude auth login' later.");
           }
         } else {
@@ -546,10 +548,13 @@ async function checkPrereqs(rl) {
         warn("Codex CLI needs authentication.");
         const doLogin = await askYN(rl, "Log in to Codex CLI now?", true);
         if (doLogin) {
-          try {
-            execSync("codex auth", { stdio: "inherit", timeout: 120000 });
+          rl.pause();
+          process.stdin.setRawMode && process.stdin.setRawMode(false);
+          const { status } = require("child_process").spawnSync("codex", ["auth"], { stdio: "inherit", timeout: 600000 });
+          rl.resume();
+          if (status === 0) {
             ok("Codex CLI — authentication complete");
-          } catch {
+          } else {
             warn("Authentication cancelled or failed — you can run 'codex auth' later.");
           }
         } else {
