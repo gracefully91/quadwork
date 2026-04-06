@@ -467,14 +467,14 @@ async function checkPrereqs(rl) {
     log("Codex CLI — OpenAI's AI coding assistant");
     const installCodex = await askYN(rl, "Install Codex CLI?", isRequired);
     if (installCodex) {
-      log(`Running: ${npmPrefix}npm install -g codex`);
+      log(`Running: ${npmPrefix}npm install -g @openai/codex`);
       try {
-        execSync(`${npmPrefix}npm install -g codex`, { stdio: "inherit", timeout: 120000 });
+        execSync(`${npmPrefix}npm install -g @openai/codex`, { stdio: "inherit", timeout: 120000 });
         hasCodex = which("codex");
         if (hasCodex) ok("Codex CLI installed");
         else warn(`Install seemed to succeed but 'codex' not found on PATH. Try restarting your terminal.`);
       } catch {
-        warn(`Install failed — try manually: ${npmPrefix}npm install -g codex`);
+        warn(`Install failed — try manually: ${npmPrefix}npm install -g @openai/codex`);
       }
     }
   }
@@ -600,7 +600,7 @@ async function setupAgents(rl, repo) {
     // Single-CLI mode: default all agents, no prompt needed
     const cliName = hasClaude ? "Claude Code" : "Codex CLI";
     const otherName = hasClaude ? "Codex CLI" : "Claude Code";
-    const installCmd = hasClaude ? "npm install -g codex" : "npm install -g @anthropic-ai/claude-code";
+    const installCmd = hasClaude ? "npm install -g @openai/codex" : "npm install -g @anthropic-ai/claude-code";
     ok(`${cliName} detected — all 4 agents will use ${cliName}.`);
     console.log("");
     log(`Tip: Installing ${otherName} too gives your team different AI perspectives,`);
