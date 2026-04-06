@@ -136,62 +136,52 @@ const chattrProcesses = new Map();
 const mcpProxies = new Map();
 
 /**
- * Grab a free port synchronously by spawning a child process.
- */
-function getFreePortSync() {
-  const result = execSync(
-    `node -e "const s=require('net').createServer();s.listen(0,'127.0.0.1',()=>{process.stdout.write(String(s.address().port));s.close()})"`,
-    { encoding: "utf-8", timeout: 5000 }
-  );
-  return parseInt(result.trim(), 10);
-}
-
-/**
  * Start a local HTTP proxy that forwards MCP requests with Bearer token.
- * Returns the proxy URL (e.g. http://127.0.0.1:54321/mcp).
- * Port is allocated synchronously via a subprocess to avoid async races.
+ * Returns a Promise that resolves to the proxy URL once listening.
  */
 function startMcpProxy(projectId, agentId, upstreamUrl, token) {
   const key = `${projectId}/${agentId}`;
   const existing = mcpProxies.get(key);
-  if (existing) return `http://127.0.0.1:${existing.port}/mcp`;
+  if (existing) return Promise.resolve(`http://127.0.0.1:${existing.port}/mcp`);
 
-  const port = getFreePortSync();
+  return new Promise((resolve, reject) => {
+    const proxyServer = http.createServer((req, res) => {
+      const parsedUrl = new URL(req.url, `http://127.0.0.1`);
+      const targetUrl = `${upstreamUrl}${parsedUrl.pathname}${parsedUrl.search}`;
+      const headers = { ...req.headers, host: new URL(upstreamUrl).host };
+      if (token) {
+        headers["authorization"] = `Bearer ${token}`;
+        headers["x-agent-token"] = token;
+      }
+      delete headers["content-length"];
 
-  const proxyServer = http.createServer((req, res) => {
-    const parsedUrl = new URL(req.url, `http://127.0.0.1`);
-    const targetUrl = `${upstreamUrl}${parsedUrl.pathname}${parsedUrl.search}`;
-    const headers = { ...req.headers, host: new URL(upstreamUrl).host };
-    if (token) {
-      headers["authorization"] = `Bearer ${token}`;
-      headers["x-agent-token"] = token;
-    }
-    delete headers["content-length"];
-
-    const chunks = [];
-    req.on("data", (chunk) => chunks.push(chunk));
-    req.on("end", () => {
-      const body = Buffer.concat(chunks);
-      const proxyReq = (upstreamUrl.startsWith("https") ? require("https") : http).request(
-        targetUrl,
-        { method: req.method, headers: { ...headers, "content-length": body.length } },
-        (proxyRes) => {
-          res.writeHead(proxyRes.statusCode, proxyRes.headers);
-          proxyRes.pipe(res);
-        }
-      );
-      proxyReq.on("error", (err) => {
-        res.writeHead(502);
-        res.end(`Proxy error: ${err.message}`);
+      const chunks = [];
+      req.on("data", (chunk) => chunks.push(chunk));
+      req.on("end", () => {
+        const body = Buffer.concat(chunks);
+        const proxyReq = (upstreamUrl.startsWith("https") ? require("https") : http).request(
+          targetUrl,
+          { method: req.method, headers: { ...headers, "content-length": body.length } },
+          (proxyRes) => {
+            res.writeHead(proxyRes.statusCode, proxyRes.headers);
+            proxyRes.pipe(res);
+          }
+        );
+        proxyReq.on("error", (err) => {
+          res.writeHead(502);
+          res.end(`Proxy error: ${err.message}`);
+        });
+        proxyReq.end(body);
       });
-      proxyReq.end(body);
+    });
+
+    proxyServer.on("error", (err) => reject(err));
+    proxyServer.listen(0, "127.0.0.1", () => {
+      const port = proxyServer.address().port;
+      mcpProxies.set(key, { server: proxyServer, port });
+      resolve(`http://127.0.0.1:${port}/mcp`);
     });
   });
-
-  // Bind to the pre-allocated port (listen is async but port is reserved)
-  proxyServer.listen(port, "127.0.0.1");
-  mcpProxies.set(key, { server: proxyServer, port });
-  return `http://127.0.0.1:${port}/mcp`;
 }
 
 function stopMcpProxy(projectId, agentId) {
@@ -237,8 +227,9 @@ function writeMcpConfigFile(projectId, agentId, mcpHttpPort, token) {
 
 /**
  * Build extra launch args for an agent (permission flags + MCP injection).
+ * Async because Codex proxy_flag mode needs to await proxy startup.
  */
-function buildAgentArgs(projectId, agentId) {
+async function buildAgentArgs(projectId, agentId) {
   const cfg = readConfig();
   const project = cfg.projects?.find((p) => p.id === projectId);
   if (!project) return [];
@@ -267,7 +258,7 @@ function buildAgentArgs(projectId, agentId) {
     } else if (injectMode === "proxy_flag") {
       // Codex: start local auth proxy, pass proxy URL via -c flag
       const upstreamUrl = `http://127.0.0.1:${mcpHttpPort}`;
-      const proxyUrl = startMcpProxy(projectId, agentId, upstreamUrl, token);
+      const proxyUrl = await startMcpProxy(projectId, agentId, upstreamUrl, token);
       if (proxyUrl) {
         args.push("-c", `mcp_servers.agentchattr.url="${proxyUrl}"`);
       }
@@ -314,14 +305,14 @@ function buildAgentEnv(projectId, agentId) {
 }
 
 // Helper: spawn a PTY for a project/agent and register in agentSessions
-function spawnAgentPty(project, agent) {
+async function spawnAgentPty(project, agent) {
   const key = `${project}/${agent}`;
 
   const cwd = resolveAgentCwd(project, agent);
   if (!cwd) return { ok: false, error: `Unknown agent: ${key}` };
 
   const command = resolveAgentCommand(project, agent) || (process.env.SHELL || "/bin/zsh");
-  const args = buildAgentArgs(project, agent);
+  const args = await buildAgentArgs(project, agent);
   const extraEnv = buildAgentEnv(project, agent);
 
   try {
@@ -610,7 +601,7 @@ app.post("/api/agents/:project/reset", async (req, res) => {
 
 // --- Lifecycle: start spawns PTY (visible in terminal panel) ---
 
-app.post("/api/agents/:project/:agent/start", (req, res) => {
+app.post("/api/agents/:project/:agent/start", async (req, res) => {
   const { project, agent } = req.params;
   const key = `${project}/${agent}`;
 
@@ -619,7 +610,7 @@ app.post("/api/agents/:project/:agent/start", (req, res) => {
     return res.json({ ok: true, state: "running", message: "Already running" });
   }
 
-  const result = spawnAgentPty(project, agent);
+  const result = await spawnAgentPty(project, agent);
   if (result.ok) {
     res.json({ ok: true, state: "running", pid: result.pid });
   } else {
@@ -638,14 +629,14 @@ app.post("/api/agents/:project/:agent/stop", (req, res) => {
 
 // --- Lifecycle: restart ---
 
-app.post("/api/agents/:project/:agent/restart", (req, res) => {
+app.post("/api/agents/:project/:agent/restart", async (req, res) => {
   const { project, agent } = req.params;
   const key = `${project}/${agent}`;
 
   stopAgentSession(key);
 
-  setTimeout(() => {
-    const result = spawnAgentPty(project, agent);
+  setTimeout(async () => {
+    const result = await spawnAgentPty(project, agent);
     if (result.ok) {
       res.json({ ok: true, state: "running", pid: result.pid });
     } else {
@@ -895,7 +886,7 @@ app.use((req, res, next) => {
 
 const wss = new WebSocketServer({ server, path: "/ws/terminal" });
 
-wss.on("connection", (ws, req) => {
+wss.on("connection", async (ws, req) => {
   const params = new URL(req.url, `http://localhost:${PORT}`).searchParams;
   const projectId = params.get("project");
   const agentId = params.get("agent");
@@ -910,7 +901,7 @@ wss.on("connection", (ws, req) => {
 
   // If no active PTY, spawn one
   if (!session || !session.term) {
-    const result = spawnAgentPty(projectId, agentId);
+    const result = await spawnAgentPty(projectId, agentId);
     if (!result.ok) {
       ws.close(1011, "pty-spawn-failed");
       return;
