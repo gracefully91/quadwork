@@ -85,16 +85,23 @@ function findAgentChattr(dir) {
 
 /**
  * Clone AgentChattr and set up its venv. Idempotent — safe to re-run.
- * Handles partial clones by removing and re-cloning.
+ * Only removes existing directories that are identifiable as failed AgentChattr clones.
  * Returns the directory path on success, null on failure.
  */
 function installAgentChattr(dir) {
   dir = dir || getAgentChattrDir();
-  // Clone if not already present or recover from partial clone
+  // Clone if not already present
   if (!fs.existsSync(path.join(dir, "run.py"))) {
     if (fs.existsSync(dir)) {
-      // Partial clone — clean up and re-clone
-      try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
+      // Directory exists but no run.py — only clean up if it looks like a failed clone
+      const hasGitDir = fs.existsSync(path.join(dir, ".git"));
+      const isEmpty = fs.readdirSync(dir).length === 0;
+      if (hasGitDir || isEmpty) {
+        try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
+      } else {
+        // Non-empty, non-git directory — refuse to overwrite
+        return null;
+      }
     }
     fs.mkdirSync(path.dirname(dir), { recursive: true });
     const cloneResult = run(`git clone "${AGENTCHATTR_REPO}" "${dir}" 2>&1`, { timeout: 60000 });
