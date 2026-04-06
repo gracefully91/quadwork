@@ -5,7 +5,7 @@ const fs = require("fs");
 const { WebSocketServer } = require("ws");
 const pty = require("node-pty");
 const { spawn } = require("child_process");
-const { readConfig, resolveAgentCwd, resolveAgentCommand, resolveProjectChattr, syncChattrToken } = require("./config");
+const { readConfig, resolveAgentCwd, resolveAgentCommand, resolveProjectChattr, resolveChattrSpawn, syncChattrToken } = require("./config");
 const routes = require("./routes");
 
 const net = require("net");
@@ -249,19 +249,28 @@ function handleAgentChattr(req, res) {
     regenerateConfigToml();
 
     // Use project config.toml if available (isolated data dir + ports), otherwise fall back to --port
-    const args = (projectConfigToml && fs.existsSync(projectConfigToml))
+    const extraArgs = (projectConfigToml && fs.existsSync(projectConfigToml))
       ? ["--config", projectConfigToml]
       : ["--port", chattrPort];
-    const child = spawn("agentchattr", args, {
+
+    // Resolve AgentChattr from its cloned directory
+    const { dir: acDir } = resolveProjectChattr(projectId);
+    const acSpawn = resolveChattrSpawn(acDir);
+    if (!acSpawn) {
+      setProc({ process: null, state: "error", error: "AgentChattr not installed. Clone it: git clone https://github.com/bcurts/agentchattr.git ~/.quadwork/agentchattr" });
+      return null;
+    }
+
+    const child = spawn(acSpawn.command, [...acSpawn.args, ...extraArgs], {
+      cwd: acSpawn.cwd,
       env: process.env,
       stdio: "ignore",
       detached: true,
     });
 
-    // If pid is undefined, spawn failed (binary not found)
+    // If pid is undefined, spawn failed
     if (!child.pid) {
-      setProc({ process: null, state: "error", error: "Failed to start AgentChattr — is it installed? Run: pipx install agentchattr" });
-      // Still register error handler to prevent unhandled error crash
+      setProc({ process: null, state: "error", error: "Failed to start AgentChattr — check that Python venv is set up in " + acDir });
       child.on("error", () => {});
       return null;
     }
