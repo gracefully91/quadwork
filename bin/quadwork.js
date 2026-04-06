@@ -436,6 +436,9 @@ async function checkPrereqs(rl) {
     console.log("");
   }
 
+  // sudo needed for global npm installs on macOS/Linux
+  const npmPrefix = process.platform === "win32" ? "" : "sudo ";
+
   // Offer to install Claude Code if missing
   if (!hasClaude) {
     const isRequired = !hasCodex;
@@ -443,11 +446,11 @@ async function checkPrereqs(rl) {
     const installClaude = await askYN(rl, "Install Claude Code?", isRequired);
     if (installClaude) {
       const sp = spinner("Installing Claude Code...");
-      const result = run("npm install -g @anthropic-ai/claude-code 2>&1", { timeout: 120000 });
+      const result = run(`${npmPrefix}npm install -g @anthropic-ai/claude-code 2>&1`, { timeout: 120000 });
       sp.stop(result !== null);
       hasClaude = which("claude");
       if (hasClaude) ok("Claude Code installed");
-      else warn("Install failed — try manually: npm install -g @anthropic-ai/claude-code");
+      else warn(`Install failed — try manually: ${npmPrefix}npm install -g @anthropic-ai/claude-code`);
     }
   }
 
@@ -462,11 +465,11 @@ async function checkPrereqs(rl) {
     const installCodex = await askYN(rl, "Install Codex CLI?", isRequired);
     if (installCodex) {
       const sp = spinner("Installing Codex CLI...");
-      const result = run("npm install -g codex 2>&1", { timeout: 120000 });
+      const result = run(`${npmPrefix}npm install -g codex 2>&1`, { timeout: 120000 });
       sp.stop(result !== null);
       hasCodex = which("codex");
       if (hasCodex) ok("Codex CLI installed");
-      else warn("Install failed — try manually: npm install -g codex");
+      else warn(`Install failed — try manually: ${npmPrefix}npm install -g codex`);
     }
   }
 
