@@ -541,7 +541,7 @@ async function checkPrereqs(rl) {
 
     // Codex CLI auth
     if (hasCodex) {
-      const codexAuth = run("codex auth status 2>&1") || run("codex --version 2>&1");
+      const codexAuth = run("codex login status 2>&1") || run("codex --version 2>&1");
       if (codexAuth && (codexAuth.includes("authenticated") || codexAuth.includes("Logged in") || codexAuth.includes("@"))) {
         ok("Codex CLI — authenticated");
       } else {
@@ -550,15 +550,15 @@ async function checkPrereqs(rl) {
         if (doLogin) {
           rl.pause();
           process.stdin.setRawMode && process.stdin.setRawMode(false);
-          const { status } = require("child_process").spawnSync("codex", ["auth"], { stdio: "inherit", timeout: 600000 });
+          const { status } = require("child_process").spawnSync("codex", ["login"], { stdio: "inherit", timeout: 600000 });
           rl.resume();
           if (status === 0) {
             ok("Codex CLI — authentication complete");
           } else {
-            warn("Authentication cancelled or failed — you can run 'codex auth' later.");
+            warn("Authentication cancelled or failed — you can run 'codex login' later.");
           }
         } else {
-          warn("Skipped — you can run 'codex auth' later.");
+          warn("Skipped — you can run 'codex login' later.");
         }
       }
     }
