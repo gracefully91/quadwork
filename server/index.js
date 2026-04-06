@@ -684,17 +684,19 @@ app.use((req, res, next) => {
 
   for (const route of dynamicRoutes) {
     if (route.pattern.test(req.path)) {
-      const templatePath = path.join(outDir, route.template);
-      if (fs.existsSync(templatePath)) {
-        return res.sendFile(templatePath);
+      if (fs.existsSync(path.join(outDir, route.template))) {
+        return res.sendFile(route.template, { root: outDir }, (err) => {
+          if (err) next();
+        });
       }
     }
   }
 
   // Everything else → index.html
-  const indexPath = path.join(outDir, "index.html");
-  if (fs.existsSync(indexPath)) {
-    res.sendFile(indexPath);
+  if (fs.existsSync(path.join(outDir, "index.html"))) {
+    res.sendFile("index.html", { root: outDir }, (err) => {
+      if (err) next();
+    });
   } else {
     res.status(503).send("Frontend not built. Run: npm run build");
   }
