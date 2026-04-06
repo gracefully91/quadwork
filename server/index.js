@@ -138,21 +138,28 @@ const mcpProxies = new Map();
 /**
  * Start a local HTTP proxy that forwards MCP requests with Bearer token.
  * Returns the proxy URL (e.g. http://127.0.0.1:54321/mcp).
+ * Uses a pre-allocated port to avoid async listen race.
  */
 function startMcpProxy(projectId, agentId, upstreamUrl, token) {
   const key = `${projectId}/${agentId}`;
   const existing = mcpProxies.get(key);
   if (existing) return `http://127.0.0.1:${existing.port}/mcp`;
 
+  // Pre-allocate a free port synchronously using a temporary net server
+  const tmpServer = net.createServer();
+  tmpServer.listen(0, "127.0.0.1");
+  const port = tmpServer.address().port;
+  tmpServer.close();
+
   const proxyServer = http.createServer((req, res) => {
-    const url = new URL(req.url, `http://127.0.0.1`);
-    const targetUrl = `${upstreamUrl}${url.pathname}${url.search}`;
+    const parsedUrl = new URL(req.url, `http://127.0.0.1`);
+    const targetUrl = `${upstreamUrl}${parsedUrl.pathname}${parsedUrl.search}`;
     const headers = { ...req.headers, host: new URL(upstreamUrl).host };
     if (token) {
       headers["authorization"] = `Bearer ${token}`;
       headers["x-agent-token"] = token;
     }
-    delete headers["content-length"]; // will be set by the forwarded request
+    delete headers["content-length"];
 
     const chunks = [];
     req.on("data", (chunk) => chunks.push(chunk));
@@ -174,18 +181,10 @@ function startMcpProxy(projectId, agentId, upstreamUrl, token) {
     });
   });
 
-  proxyServer.listen(0, "127.0.0.1", () => {
-    const port = proxyServer.address().port;
-    mcpProxies.set(key, { server: proxyServer, port });
-  });
-
-  // Wait synchronously for port assignment (will be ready immediately for localhost)
-  const addr = proxyServer.address();
-  if (addr) {
-    mcpProxies.set(key, { server: proxyServer, port: addr.port });
-    return `http://127.0.0.1:${addr.port}/mcp`;
-  }
-  return null;
+  // Bind to the pre-allocated port
+  proxyServer.listen(port, "127.0.0.1");
+  mcpProxies.set(key, { server: proxyServer, port });
+  return `http://127.0.0.1:${port}/mcp`;
 }
 
 function stopMcpProxy(projectId, agentId) {
