@@ -1155,7 +1155,7 @@ async function cmdInit() {
     console.log(`    ${c.dim}3.${c.reset} Hit Start — your team takes it from there`);
     console.log("");
     console.log(`  ${c.dim}Commands:${c.reset}`);
-    console.log(`    ${c.dim}npx quadwork start${c.reset}    — start the dashboard (Ctrl+C to stop)`);
+    console.log(`    ${c.dim}npx --yes quadwork start${c.reset}  — start the dashboard (Ctrl+C to stop)`);
     console.log("");
     console.log(`  ${c.green}${c.bold}Happy shipping!${c.reset}`);
     console.log("");
@@ -1236,11 +1236,14 @@ function cmdStart() {
   process.on("SIGINT", () => {
     console.log("");
     log("Shutting down...");
-    // Stop AgentChattr processes
     for (const pid of acPids) {
       try { process.kill(pid, "SIGTERM"); } catch {}
     }
-    ok("Stopped. Goodbye!");
+    ok("Stopped.");
+    console.log("");
+    log("To restart:");
+    log(`  ${c.dim}npx --yes quadwork start${c.reset}`);
+    console.log("");
     process.exit(0);
   });
 
