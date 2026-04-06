@@ -951,8 +951,10 @@ async function cmdInit() {
     // Step 1: Prerequisites (header printed by checkPrereqs)
     const prereqsOk = await checkPrereqs(rl);
     if (!prereqsOk) {
-      const proceed = await askYN(rl, "Some prerequisites missing. Continue anyway?", false);
-      if (!proceed) { rl.close(); process.exit(1); }
+      console.log("");
+      log("Once everything is installed, re-run:  npx quadwork init");
+      rl.close();
+      process.exit(1);
     }
 
     // Step 2: Dashboard port
