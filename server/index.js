@@ -131,6 +131,113 @@ const agentSessions = new Map();
 // AgentChattr server processes — per-project (key = projectId)
 const chattrProcesses = new Map();
 
+// --- Permission bypass flags per CLI ---
+const PERMISSION_FLAGS = {
+  claude: ["--dangerously-skip-permissions"],
+  codex: ["--dangerously-bypass-approvals-and-sandbox"],
+  gemini: ["--yolo"],
+};
+
+// --- MCP config generation & agent launch args ---
+
+/**
+ * Generate a per-agent MCP config file for Claude (--mcp-config).
+ * Returns the absolute path to the written JSON file.
+ */
+function writeMcpConfigFile(projectId, agentId, mcpHttpPort, token) {
+  const os = require("os");
+  const configDir = path.join(os.homedir(), ".quadwork", projectId);
+  if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
+  const filePath = path.join(configDir, `mcp-${agentId}.json`);
+  const url = `http://127.0.0.1:${mcpHttpPort}/mcp`;
+  const config = {
+    mcpServers: {
+      agentchattr: {
+        type: "http",
+        url,
+        ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+      },
+    },
+  };
+  fs.writeFileSync(filePath, JSON.stringify(config, null, 2));
+  return filePath;
+}
+
+/**
+ * Build extra launch args for an agent (permission flags + MCP injection).
+ */
+function buildAgentArgs(projectId, agentId) {
+  const cfg = readConfig();
+  const project = cfg.projects?.find((p) => p.id === projectId);
+  if (!project) return [];
+
+  const agentCfg = project.agents?.[agentId] || {};
+  const command = agentCfg.command || "claude";
+  const cliBase = command.split("/").pop().split(" ")[0]; // extract base CLI name
+  const args = [];
+
+  // Permission bypass flags
+  if (agentCfg.auto_approve !== false) {
+    const flags = PERMISSION_FLAGS[cliBase];
+    if (flags) args.push(...flags);
+  }
+
+  // MCP config injection
+  const mcpHttpPort = project.mcp_http_port;
+  const token = project.agentchattr_token;
+  if (mcpHttpPort) {
+    const injectMode = agentCfg.mcp_inject || (cliBase === "codex" ? "proxy_flag" : "flag");
+    if (injectMode === "flag") {
+      // Claude/Kimi: write config file, pass --mcp-config
+      const mcpConfigPath = writeMcpConfigFile(projectId, agentId, mcpHttpPort, token);
+      const flag = agentCfg.mcp_flag || "--mcp-config";
+      args.push(flag, mcpConfigPath);
+    } else if (injectMode === "proxy_flag") {
+      // Codex: pass -c flag with proxy URL
+      const url = `http://127.0.0.1:${mcpHttpPort}/mcp`;
+      args.push("-c", `mcp_servers.agentchattr.url="${url}"`);
+    }
+  }
+
+  return args;
+}
+
+/**
+ * Build extra env vars for an agent (MCP injection via env for Gemini).
+ */
+function buildAgentEnv(projectId, agentId) {
+  const cfg = readConfig();
+  const project = cfg.projects?.find((p) => p.id === projectId);
+  if (!project) return {};
+
+  const agentCfg = project.agents?.[agentId] || {};
+  const command = agentCfg.command || "claude";
+  const cliBase = command.split("/").pop().split(" ")[0];
+  const env = {};
+
+  // Gemini: inject MCP via env var
+  if (cliBase === "gemini" && project.mcp_http_port) {
+    const os = require("os");
+    const configDir = path.join(os.homedir(), ".quadwork", projectId);
+    if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
+    const settingsPath = path.join(configDir, `mcp-${agentId}-settings.json`);
+    const url = `http://127.0.0.1:${project.mcp_http_port}/mcp`;
+    const settings = {
+      mcpServers: {
+        agentchattr: {
+          type: "http",
+          url,
+          ...(project.agentchattr_token ? { headers: { Authorization: `Bearer ${project.agentchattr_token}` } } : {}),
+        },
+      },
+    };
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    env.GEMINI_CLI_SYSTEM_SETTINGS_PATH = settingsPath;
+  }
+
+  return env;
+}
+
 // Helper: spawn a PTY for a project/agent and register in agentSessions
 function spawnAgentPty(project, agent) {
   const key = `${project}/${agent}`;
@@ -139,14 +246,16 @@ function spawnAgentPty(project, agent) {
   if (!cwd) return { ok: false, error: `Unknown agent: ${key}` };
 
   const command = resolveAgentCommand(project, agent) || (process.env.SHELL || "/bin/zsh");
+  const args = buildAgentArgs(project, agent);
+  const extraEnv = buildAgentEnv(project, agent);
 
   try {
-    const term = pty.spawn(command, [], {
+    const term = pty.spawn(command, args, {
       name: "xterm-256color",
       cols: 120,
       rows: 30,
       cwd,
-      env: process.env,
+      env: { ...process.env, ...extraEnv },
     });
 
     const session = { projectId: project, agentId: agent, term, ws: null, state: "running", error: null };
