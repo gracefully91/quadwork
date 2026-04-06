@@ -131,6 +131,72 @@ const agentSessions = new Map();
 // AgentChattr server processes — per-project (key = projectId)
 const chattrProcesses = new Map();
 
+// --- MCP auth proxy for Codex (can't pass headers via -c flag) ---
+// Maps "project/agent" → { server, port }
+const mcpProxies = new Map();
+
+/**
+ * Start a local HTTP proxy that forwards MCP requests with Bearer token.
+ * Returns the proxy URL (e.g. http://127.0.0.1:54321/mcp).
+ */
+function startMcpProxy(projectId, agentId, upstreamUrl, token) {
+  const key = `${projectId}/${agentId}`;
+  const existing = mcpProxies.get(key);
+  if (existing) return `http://127.0.0.1:${existing.port}/mcp`;
+
+  const proxyServer = http.createServer((req, res) => {
+    const url = new URL(req.url, `http://127.0.0.1`);
+    const targetUrl = `${upstreamUrl}${url.pathname}${url.search}`;
+    const headers = { ...req.headers, host: new URL(upstreamUrl).host };
+    if (token) {
+      headers["authorization"] = `Bearer ${token}`;
+      headers["x-agent-token"] = token;
+    }
+    delete headers["content-length"]; // will be set by the forwarded request
+
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => {
+      const body = Buffer.concat(chunks);
+      const proxyReq = (upstreamUrl.startsWith("https") ? require("https") : http).request(
+        targetUrl,
+        { method: req.method, headers: { ...headers, "content-length": body.length } },
+        (proxyRes) => {
+          res.writeHead(proxyRes.statusCode, proxyRes.headers);
+          proxyRes.pipe(res);
+        }
+      );
+      proxyReq.on("error", (err) => {
+        res.writeHead(502);
+        res.end(`Proxy error: ${err.message}`);
+      });
+      proxyReq.end(body);
+    });
+  });
+
+  proxyServer.listen(0, "127.0.0.1", () => {
+    const port = proxyServer.address().port;
+    mcpProxies.set(key, { server: proxyServer, port });
+  });
+
+  // Wait synchronously for port assignment (will be ready immediately for localhost)
+  const addr = proxyServer.address();
+  if (addr) {
+    mcpProxies.set(key, { server: proxyServer, port: addr.port });
+    return `http://127.0.0.1:${addr.port}/mcp`;
+  }
+  return null;
+}
+
+function stopMcpProxy(projectId, agentId) {
+  const key = `${projectId}/${agentId}`;
+  const proxy = mcpProxies.get(key);
+  if (proxy) {
+    try { proxy.server.close(); } catch {}
+    mcpProxies.delete(key);
+  }
+}
+
 // --- Permission bypass flags per CLI ---
 const PERMISSION_FLAGS = {
   claude: ["--dangerously-skip-permissions"],
@@ -193,9 +259,12 @@ function buildAgentArgs(projectId, agentId) {
       const flag = agentCfg.mcp_flag || "--mcp-config";
       args.push(flag, mcpConfigPath);
     } else if (injectMode === "proxy_flag") {
-      // Codex: pass -c flag with proxy URL
-      const url = `http://127.0.0.1:${mcpHttpPort}/mcp`;
-      args.push("-c", `mcp_servers.agentchattr.url="${url}"`);
+      // Codex: start local auth proxy, pass proxy URL via -c flag
+      const upstreamUrl = `http://127.0.0.1:${mcpHttpPort}`;
+      const proxyUrl = startMcpProxy(projectId, agentId, upstreamUrl, token);
+      if (proxyUrl) {
+        args.push("-c", `mcp_servers.agentchattr.url="${proxyUrl}"`);
+      }
     }
   }
 
@@ -299,6 +368,9 @@ function stopAgentSession(key) {
   session.ws = null;
   session.state = "stopped";
   session.error = null;
+  // Clean up MCP auth proxy if running
+  const [projectId, agentId] = key.split("/");
+  if (projectId && agentId) stopMcpProxy(projectId, agentId);
 }
 
 app.get("/api/agents", (_req, res) => {
