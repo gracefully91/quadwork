@@ -1307,21 +1307,27 @@ async function cmdInit() {
       try { execSync(`${openCmd} ${dashboardUrl}/setup`, { stdio: "ignore" }); } catch {}
     }, 1500);
 
-    // Graceful shutdown on Ctrl+C. cmdInit doesn't spawn per-project
-    // AgentChattr processes (there are no projects yet), so the
-    // handler only needs to stop the in-process server — require()
-    // brings it into this same Node process, so process.exit() is
-    // enough to release the port.
+    // Run the server in the foreground. require() starts the express
+    // listener in this process, so cmdInit stays alive until Ctrl+C.
+    // Capture the exports so the SIGINT handler can ask the server
+    // to SIGTERM any AgentChattr children it spawned after init (the
+    // user creates a project in /setup and clicks Start → the
+    // dashboard launches python run.py as a detached child and only
+    // the server knows its pid, via its in-memory `chattrProcesses`
+    // Map).
+    const serverExports = require(path.join(serverDir, "index.js"));
+
+    // Graceful shutdown on Ctrl+C. Kill any dashboard-spawned
+    // AgentChattr children first, then exit so the port is released
+    // and no python is orphaned.
     process.on("SIGINT", () => {
       console.log("");
       log("Shutting down...");
+      try { serverExports && serverExports.shutdownChattrProcesses && serverExports.shutdownChattrProcesses(); }
+      catch (e) { warn(`shutdownChattrProcesses failed: ${e.message}`); }
       ok("Stopped.");
       process.exit(0);
     });
-
-    // Run the server in the foreground. require() starts the express
-    // listener in this process, so cmdInit stays alive until Ctrl+C.
-    require(path.join(serverDir, "index.js"));
   } catch (err) {
     fail(err.message);
     rl.close();
@@ -1515,13 +1521,25 @@ function cmdStart() {
     try { execSync(`${openCmd} ${dashboardUrl}`, { stdio: "ignore" }); } catch {}
   }, 1500);
 
-  // Graceful shutdown on Ctrl+C
+  // Run server in foreground. Capture exports so the SIGINT handler
+  // can ask the server to SIGTERM its own chattrProcesses Map too
+  // (dashboard-spawned AgentChattr children aren't in cmdStart's
+  // acPids list).
+  log(`Dashboard: ${dashboardUrl}`);
+  log("Press Ctrl+C to stop.\n");
+  const serverExports = require(path.join(serverDir, "index.js"));
+
+  // Graceful shutdown on Ctrl+C — kills cmdStart's own spawned
+  // AgentChattrs AND anything the dashboard spawned via
+  // /api/agentchattr/{id}/start after init.
   process.on("SIGINT", () => {
     console.log("");
     log("Shutting down...");
     for (const pid of acPids) {
       try { process.kill(pid, "SIGTERM"); } catch {}
     }
+    try { serverExports && serverExports.shutdownChattrProcesses && serverExports.shutdownChattrProcesses(); }
+    catch (e) { warn(`shutdownChattrProcesses failed: ${e.message}`); }
     ok("Stopped.");
     console.log("");
     log("To restart:");
@@ -1529,11 +1547,6 @@ function cmdStart() {
     console.log("");
     process.exit(0);
   });
-
-  // Run server in foreground
-  log(`Dashboard: ${dashboardUrl}`);
-  log("Press Ctrl+C to stop.\n");
-  require(path.join(serverDir, "index.js"));
 }
 
 // ─── Stop Command ───────────────────────────────────────────────────────────
