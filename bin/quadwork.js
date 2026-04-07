@@ -103,11 +103,104 @@ function findAgentChattr(dir) {
  * `installAgentChattr.lastError` so callers can surface it without
  * changing the return shape.
  */
+// Stale-lock thresholds for installAgentChattr().
+// Lock files older than this OR whose owning pid is no longer alive are
+// treated as crashed and reclaimed. Tuned to comfortably exceed the longest
+// step (pip install of agentchattr requirements, ~120s timeout).
+const INSTALL_LOCK_STALE_MS = 10 * 60 * 1000; // 10 min
+const INSTALL_LOCK_WAIT_TOTAL_MS = 30 * 1000;  // wait up to 30s for a peer
+const INSTALL_LOCK_POLL_MS = 500;
+
+function _isPidAlive(pid) {
+  if (!pid || !Number.isFinite(pid)) return false;
+  try { process.kill(pid, 0); return true; }
+  catch (e) { return e.code === "EPERM"; }
+}
+
+function _readLock(lockFile) {
+  try {
+    const raw = fs.readFileSync(lockFile, "utf-8").trim();
+    const [pidStr, tsStr] = raw.split(":");
+    return { pid: parseInt(pidStr, 10), ts: parseInt(tsStr, 10) || 0 };
+  } catch { return null; }
+}
+
+function _isLockStale(lockFile) {
+  const info = _readLock(lockFile);
+  if (!info) return true; // unreadable → assume stale
+  if (Date.now() - info.ts > INSTALL_LOCK_STALE_MS) return true;
+  if (!_isPidAlive(info.pid)) return true;
+  return false;
+}
+
 function installAgentChattr(dir) {
   dir = dir || getAgentChattrDir();
   installAgentChattr.lastError = null;
   const setError = (msg) => { installAgentChattr.lastError = msg; return null; };
 
+  // --- Per-target lock to prevent concurrent clones from corrupting each
+  // other when two projects (or two web tabs) launch simultaneously. Lock
+  // file lives next to the install dir so it's scoped per-target.
+  const lockFile = `${dir}.install.lock`;
+  try { fs.mkdirSync(path.dirname(lockFile), { recursive: true }); }
+  catch (e) { return setError(`Cannot create parent of ${dir}: ${e.message}`); }
+
+  let acquired = false;
+  const deadline = Date.now() + INSTALL_LOCK_WAIT_TOTAL_MS;
+  while (!acquired) {
+    try {
+      // Atomic create: fails if file already exists, no TOCTOU race.
+      fs.writeFileSync(lockFile, `${process.pid}:${Date.now()}`, { flag: "wx" });
+      acquired = true;
+    } catch (e) {
+      if (e.code !== "EEXIST") return setError(`Cannot create install lock ${lockFile}: ${e.message}`);
+      // Reclaim if the existing lock is stale (crashed pid or too old).
+      // Use rename → unlink instead of unlink directly: rename is atomic,
+      // so only one racing process can move the stale lock aside. The
+      // others see ENOENT and just retry the wx create. Without this,
+      // two processes could both observe the same stale lock, both
+      // unlink it (one of those unlinks would target the *next* lock
+      // freshly acquired by a third process), and both proceed past the
+      // gate concurrently — see review on quadwork#193.
+      if (_isLockStale(lockFile)) {
+        const sideline = `${lockFile}.stale.${process.pid}.${Date.now()}`;
+        try {
+          fs.renameSync(lockFile, sideline);
+          try { fs.unlinkSync(sideline); } catch {}
+        } catch (renameErr) {
+          // ENOENT: another process already reclaimed it. Anything else:
+          // treat as transient and retry — the next iteration will read
+          // whatever is at lockFile now and decide again.
+          if (renameErr.code !== "ENOENT") {
+            return setError(`Cannot reclaim stale lock ${lockFile}: ${renameErr.message}`);
+          }
+        }
+        continue;
+      }
+      // Live peer install in progress. After it finishes, the install
+      // is likely already done — caller will see a fully-installed path
+      // on the next call. While waiting, poll until the lock disappears
+      // or we hit the wait deadline.
+      if (Date.now() >= deadline) {
+        const info = _readLock(lockFile) || { pid: "?", ts: 0 };
+        return setError(`Another install is in progress at ${dir} (pid ${info.pid}); timed out after ${INSTALL_LOCK_WAIT_TOTAL_MS}ms. Re-run after it finishes, or remove ${lockFile} if stale.`);
+      }
+      // Synchronous sleep — installAgentChattr is itself synchronous and
+      // is called from the CLI wizard, where blocking is acceptable.
+      // Use execSync('sleep') instead of a busy-wait so we don't pin a CPU.
+      try { require("child_process").execSync(`sleep ${INSTALL_LOCK_POLL_MS / 1000}`); }
+      catch { /* sleep interrupted; loop will recheck */ }
+    }
+  }
+
+  try {
+    return _installAgentChattrLocked(dir, setError);
+  } finally {
+    try { fs.unlinkSync(lockFile); } catch {}
+  }
+}
+
+function _installAgentChattrLocked(dir, setError) {
   const runPy = path.join(dir, "run.py");
   const venvPython = path.join(dir, ".venv", "bin", "python");
   let venvJustCreated = false;
