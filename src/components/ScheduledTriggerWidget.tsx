@@ -161,7 +161,18 @@ export default function ScheduledTriggerWidget({ projectId }: ScheduledTriggerWi
     try {
       const r = await fetch(`/api/triggers/${encodeURIComponent(projectId)}/stop`, { method: "POST" });
       if (!r.ok) throw new Error(`${r.status}`);
-      setTrigger({ ...(trigger || { interval: 0, lastSent: null, nextAt: null, expiresAt: null, message }), enabled: false });
+      setTrigger({
+        ...(trigger || {
+          interval: 0,
+          lastSent: null,
+          nextAt: null,
+          expiresAt: null,
+          message,
+          intervalMin,
+          durationMin,
+        }),
+        enabled: false,
+      });
       await load();
     } catch (e) { setError((e as Error).message); }
     finally { setBusy(false); }
