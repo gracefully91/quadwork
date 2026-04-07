@@ -630,6 +630,8 @@ router.post("/api/setup", (req, res) => {
         let agentsContent = fs.readFileSync(seedSrc, "utf-8");
         agentsContent = agentsContent.replace(/\{\{reviewer_github_user\}\}/g, reviewerUser);
         agentsContent = agentsContent.replace(/\{\{reviewer_token_path\}\}/g, reviewerTokenPath);
+        // Batch 25 / #205: substitute the per-project queue file path.
+        agentsContent = agentsContent.replace(/\{\{project_name\}\}/g, dirName);
         fs.writeFileSync(agentsMd, agentsContent);
         seeded.push(`${agent}/AGENTS.md`);
 
