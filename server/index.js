@@ -997,3 +997,24 @@ server.listen(PORT, "127.0.0.1", () => {
     syncChattrToken(p.id);
   }
 });
+
+/**
+ * Send SIGTERM to every AgentChattr child currently tracked by the
+ * server. Exported so bin/quadwork.js (`cmdInit` / `cmdStart`) can
+ * call it from its own SIGINT handler — AgentChattr children spawned
+ * by the dashboard's /api/agentchattr/{id}/start endpoint live in
+ * this process's in-memory `chattrProcesses` Map and are otherwise
+ * invisible to the CLI. Without this, a Ctrl+C in the foreground
+ * quadwork terminal would exit the Node process and orphan every
+ * dashboard-started python run.py. See review on quadwork#213.
+ */
+function shutdownChattrProcesses() {
+  for (const [, proc] of chattrProcesses) {
+    if (proc && proc.process) {
+      try { proc.process.kill("SIGTERM"); } catch {}
+    }
+  }
+  chattrProcesses.clear();
+}
+
+module.exports = { shutdownChattrProcesses };
