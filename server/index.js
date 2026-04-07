@@ -208,6 +208,39 @@ const PERMISSION_FLAGS = {
  * Generate a per-agent MCP config file for Claude (--mcp-config).
  * Returns the absolute path to the written JSON file.
  */
+/**
+ * Per-agent registration tokens persisted across QuadWork restarts so
+ * #242 stale-slot reclaim works after a crash. Without this the
+ * in-memory _tokenCache is empty on startup and the family-name
+ * deregister returns 403 (app.py:2123-2135).
+ */
+function _agentTokenPath(projectId, agentId) {
+  const configDir = path.join(os.homedir(), ".quadwork", projectId);
+  return path.join(configDir, `agent-token-${agentId}.txt`);
+}
+
+function readPersistedAgentToken(projectId, agentId) {
+  try {
+    return fs.readFileSync(_agentTokenPath(projectId, agentId), "utf8").trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+function writePersistedAgentToken(projectId, agentId, token) {
+  try {
+    const configDir = path.join(os.homedir(), ".quadwork", projectId);
+    if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(_agentTokenPath(projectId, agentId), token, { mode: 0o600 });
+  } catch {
+    // non-fatal — stale-slot reclaim will degrade but registration still works
+  }
+}
+
+function clearPersistedAgentToken(projectId, agentId) {
+  try { fs.unlinkSync(_agentTokenPath(projectId, agentId)); } catch {}
+}
+
 function writeMcpConfigFile(projectId, agentId, mcpHttpPort, token) {
   const os = require("os");
   const configDir = path.join(os.homedir(), ".quadwork", projectId);
@@ -264,13 +297,21 @@ async function buildAgentArgs(projectId, agentId) {
       // #242: best-effort deregister any stale registration of the
       // canonical name (left over by a crashed previous QuadWork
       // session) so the fresh register lands at slot 1 instead of
-      // head-2 / reviewer2-2. Failures are non-fatal.
-      await deregisterAgent(acServerPort, agentId).catch(() => {});
+      // head-2 / reviewer2-2. We need the previous agent's bearer
+      // token because app.py:2123 requires authenticated agent
+      // session for family names — load it from disk (persisted
+      // across restarts). Failures are non-fatal.
+      const stalePersistedToken = readPersistedAgentToken(projectId, agentId);
+      if (stalePersistedToken) {
+        await deregisterAgent(acServerPort, agentId, stalePersistedToken).catch(() => {});
+        clearPersistedAgentToken(projectId, agentId);
+      }
       const registration = await registerAgent(acServerPort, agentId, agentCfg.display_name || null);
       if (!registration) {
         throw new Error(`Failed to register ${agentId}: ${registerAgent.lastError}`);
       }
       acRegistrationName = registration.name;
+      writePersistedAgentToken(projectId, agentId, registration.token);
       const mcpConfigPath = writeMcpConfigFile(projectId, agentId, mcpHttpPort, registration.token);
       const flag = agentCfg.mcp_flag || "--mcp-config";
       args.push(flag, mcpConfigPath);
@@ -282,13 +323,19 @@ async function buildAgentArgs(projectId, agentId) {
       const chattrInfo = resolveProjectChattr(projectId);
       acServerPort = Number(new URL(chattrInfo.url).port) || 8300;
       await waitForAgentChattrReady(acServerPort);
-      // #242: best-effort deregister stale canonical name first.
-      await deregisterAgent(acServerPort, agentId).catch(() => {});
+      // #242: best-effort deregister stale canonical name first using
+      // the persisted bearer token from a previous session.
+      const stalePersistedToken = readPersistedAgentToken(projectId, agentId);
+      if (stalePersistedToken) {
+        await deregisterAgent(acServerPort, agentId, stalePersistedToken).catch(() => {});
+        clearPersistedAgentToken(projectId, agentId);
+      }
       const registration = await registerAgent(acServerPort, agentId, agentCfg.display_name || null);
       if (!registration) {
         throw new Error(`Failed to register ${agentId}: ${registerAgent.lastError}`);
       }
       acRegistrationName = registration.name;
+      writePersistedAgentToken(projectId, agentId, registration.token);
       const upstreamUrl = `http://127.0.0.1:${mcpHttpPort}`;
       const proxyUrl = await startMcpProxy(projectId, agentId, upstreamUrl, registration.token);
       if (proxyUrl) {
@@ -417,6 +464,9 @@ async function stopAgentSession(key) {
       await deregisterAgent(session.acServerPort, session.acRegistrationName);
     } catch {
       // best-effort — failures are non-fatal
+    }
+    if (session.projectId && session.agentId) {
+      clearPersistedAgentToken(session.projectId, session.agentId);
     }
     session.acRegistrationName = null;
   }
