@@ -1142,6 +1142,30 @@ bridge_sender = "telegram-bridge"
 
 // ─── Write QuadWork Config ──────────────────────────────────────────────────
 
+/**
+ * Seed ~/.quadwork/{projectName}/OVERNIGHT-QUEUE.md from templates/.
+ * Idempotent — never overwrites an existing file so user and Head
+ * agent edits are preserved across re-runs.
+ */
+function writeOvernightQueueFile(projectName, repo) {
+  const queueDir = path.join(CONFIG_DIR, projectName);
+  const queuePath = path.join(queueDir, "OVERNIGHT-QUEUE.md");
+  if (fs.existsSync(queuePath)) return false;
+  try { fs.mkdirSync(queueDir, { recursive: true }); }
+  catch (e) { warn(`Could not create ${queueDir}: ${e.message}`); return false; }
+  const templatePath = path.join(TEMPLATES_DIR, "OVERNIGHT-QUEUE.md");
+  if (!fs.existsSync(templatePath)) {
+    warn(`OVERNIGHT-QUEUE.md template missing at ${templatePath}`);
+    return false;
+  }
+  let content = fs.readFileSync(templatePath, "utf-8");
+  content = content.replace(/\{\{project_name\}\}/g, projectName || "");
+  content = content.replace(/\{\{repo\}\}/g, repo || "");
+  fs.writeFileSync(queuePath, content);
+  ok(`Wrote ${queuePath}`);
+  return true;
+}
+
 function writeQuadWorkConfig(setup) {
   header("Writing QuadWork Config");
 
@@ -1201,6 +1225,11 @@ function writeQuadWorkConfig(setup) {
   // its own clone so AgentChattr's ROOT/config.toml lookup picks up the right
   // ports — see master ticket #181.
   project.agentchattr_dir = path.join(os.homedir(), ".quadwork", setup.projectName, "agentchattr");
+
+  // Batch 25 / #204: seed the per-project OVERNIGHT-QUEUE.md at
+  // ~/.quadwork/{id}/OVERNIGHT-QUEUE.md. Idempotent — if the file
+  // already exists, preserve the user's / Head agent's edits.
+  writeOvernightQueueFile(setup.projectName, setup.repo);
 
   // Upsert project
   if (existingIdx >= 0) config.projects[existingIdx] = project;

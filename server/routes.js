@@ -788,6 +788,24 @@ router.post("/api/setup", (req, res) => {
       const dir = path.dirname(CONFIG_PATH);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
+
+      // Batch 25 / #204: seed the per-project OVERNIGHT-QUEUE.md at
+      // ~/.quadwork/{id}/OVERNIGHT-QUEUE.md. Idempotent — preserves
+      // existing user/Head agent edits on re-runs.
+      try {
+        const queuePath = path.join(CONFIG_DIR, id, "OVERNIGHT-QUEUE.md");
+        if (!fs.existsSync(queuePath)) {
+          const tpl = path.join(TEMPLATES_DIR, "OVERNIGHT-QUEUE.md");
+          if (fs.existsSync(tpl)) {
+            fs.mkdirSync(path.dirname(queuePath), { recursive: true });
+            let content = fs.readFileSync(tpl, "utf-8");
+            content = content.replace(/\{\{project_name\}\}/g, name || id || "");
+            content = content.replace(/\{\{repo\}\}/g, repo || "");
+            fs.writeFileSync(queuePath, content);
+          }
+        }
+      } catch (e) { /* non-fatal — project creation shouldn't abort over a docs file */ }
+
       return res.json({ ok: true });
     }
     default:
