@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import AboutModal from "./AboutModal";
 
 const GITHUB_URL = "https://github.com/realproject7/quadwork";
@@ -22,12 +22,20 @@ const TYPE_MS = 70;
 const DELETE_MS = 35;
 const HOLD_MS = 2000;
 
-function useTypewriter(variants: string[]) {
+function useTypewriter(variants: string[], enabled: boolean) {
   const [index, setIndex] = useState(0);
   const [text, setText] = useState("");
   const [phase, setPhase] = useState<"typing" | "holding" | "deleting">("typing");
 
   useEffect(() => {
+    // #227: when disabled, the live `index` / `phase` / `text` are
+    // intentionally left untouched — toggling back on must resume
+    // exactly where the animation was paused, not restart from the
+    // first variant. The render side substitutes the static first
+    // variant for display while disabled; we just stop scheduling
+    // phase transitions here.
+    if (!enabled) return;
+
     const current = variants[index];
     let timer: ReturnType<typeof setTimeout>;
 
@@ -49,14 +57,65 @@ function useTypewriter(variants: string[]) {
     }
 
     return () => clearTimeout(timer);
-  }, [text, phase, index, variants]);
+  }, [text, phase, index, variants, enabled]);
 
   return text;
 }
 
+const TAGLINE_LS_KEY = "quadwork_tagline_animation";
+
 export default function TopHeader() {
   const [aboutOpen, setAboutOpen] = useState(false);
-  const suffix = useTypewriter(TAGLINE_VARIANTS);
+  // #227: tagline animation toggle persisted in localStorage. Default
+  // is "on" for new visitors. Initialised lazily so SSR doesn't try
+  // to read window.localStorage during the first render.
+  const [animationEnabled, setAnimationEnabled] = useState(true);
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(TAGLINE_LS_KEY);
+      if (saved === "off") setAnimationEnabled(false);
+    } catch { /* localStorage unavailable — keep default */ }
+  }, []);
+  const toggleAnimation = () => {
+    setAnimationEnabled((prev) => {
+      const next = !prev;
+      try { window.localStorage.setItem(TAGLINE_LS_KEY, next ? "on" : "off"); } catch {}
+      return next;
+    });
+  };
+
+  const liveSuffix = useTypewriter(TAGLINE_VARIANTS, animationEnabled);
+  // #227: when disabled, freeze on the first variant ("sleep.").
+  // The hook keeps its live index/phase intact, so re-enabling
+  // resumes from where the animation was paused.
+  const suffix = animationEnabled ? liveSuffix : (TAGLINE_VARIANTS[0] || "");
+
+  // #227: the toggle should appear only after the typewriter
+  // completes one cycle (operator has seen the animation in
+  // motion) or after a ~5s fallback. If the animation is already
+  // off (operator paused it on a previous visit), show the toggle
+  // immediately so they can re-enable.
+  const [showToggle, setShowToggle] = useState(false);
+  useEffect(() => {
+    if (!animationEnabled) { setShowToggle(true); return; }
+    const t = setTimeout(() => setShowToggle(true), 5000);
+    return () => clearTimeout(t);
+  }, [animationEnabled]);
+  // First-cycle completion: a "deleting → empty → next variant"
+  // transition produces an empty `liveSuffix` AFTER the typewriter
+  // has typed something. We need to wait until the suffix has been
+  // non-empty at least once before treating empty as "cycle done"
+  // — otherwise the initial mount value (also "") would trip this
+  // immediately. Use a ref so the gate doesn't re-trigger renders.
+  const hasTypedRef = useRef(false);
+  useEffect(() => {
+    if (!animationEnabled) return;
+    if (liveSuffix.length > 0) {
+      hasTypedRef.current = true;
+    } else if (hasTypedRef.current) {
+      setShowToggle(true);
+    }
+  }, [animationEnabled, liveSuffix]);
 
   return (
     <>
@@ -69,8 +128,26 @@ export default function TopHeader() {
           <span className="hidden sm:inline text-[13px] text-neutral-400 truncate">
             Your AI dev team while you{" "}
             <span className="text-neutral-200">{suffix}</span>
-            <span className="ml-0.5 inline-block w-[1px] h-[12px] align-middle bg-neutral-400 animate-qw-blink" />
+            {animationEnabled && (
+              <span className="ml-0.5 inline-block w-[1px] h-[12px] align-middle bg-neutral-400 animate-qw-blink" />
+            )}
           </span>
+          {/* #227: small unobtrusive toggle for the tagline animation.
+              Hidden until the operator has seen one full cycle of the
+              animation (or a ~5s fallback) so it isn't a discoverable
+              affordance the very first frame. */}
+          {showToggle && (
+            <button
+              type="button"
+              onClick={toggleAnimation}
+              aria-label={animationEnabled ? "Pause tagline animation" : "Resume tagline animation"}
+              aria-pressed={animationEnabled}
+              title={animationEnabled ? "Pause tagline animation" : "Resume tagline animation"}
+              className="hidden sm:inline-flex items-center justify-center w-3.5 h-3.5 ml-1 rounded-full border border-white/15 text-neutral-500 hover:text-white hover:border-white/40 transition-colors text-[8px]"
+            >
+              {animationEnabled ? "❚❚" : "▶"}
+            </button>
+          )}
         </div>
         <div className="flex items-center gap-3 shrink-0">
           <button
