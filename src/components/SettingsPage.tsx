@@ -248,12 +248,17 @@ export default function SettingsPage() {
   const addProject = () => {
     if (!config) return;
     const id = `project-${Date.now()}`;
-    // Use CLI-status-aware defaults: if only one CLI installed, use it for all agents
-    const defaultCmd = cliStatus
-      ? (cliStatus.claude && !cliStatus.codex ? "claude"
-        : !cliStatus.claude && cliStatus.codex ? "codex"
-        : "claude")
-      : "claude";
+    // #212: honor the saved Default agent CLI setting first. Fall
+    // back to CLI-status-aware availability only when the configured
+    // backend isn't actually installed (so we never seed a project
+    // with a CLI the user can't run).
+    const configured = config.default_backend || "claude";
+    const configuredAvailable = !cliStatus || (cliStatus[configured as "claude" | "codex"] !== false);
+    const defaultCmd = configuredAvailable
+      ? configured
+      : (cliStatus && cliStatus.claude && !cliStatus.codex ? "claude"
+        : cliStatus && !cliStatus.claude && cliStatus.codex ? "codex"
+        : "claude");
     const agents: Record<string, AgentConfig> = {};
     for (const [key, val] of Object.entries(DEFAULT_AGENTS)) {
       agents[key] = { ...val, command: defaultCmd };
