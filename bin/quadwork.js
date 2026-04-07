@@ -853,6 +853,8 @@ async function setupAgents(rl, repo) {
         seedContent = seedContent.replace(/\{\{reviewer_github_user\}\}/g, "");
         seedContent = seedContent.replace(/\{\{reviewer_token_path\}\}/g, "");
       }
+      // Batch 25 / #205: substitute the per-project queue file path.
+      seedContent = seedContent.replace(/\{\{project_name\}\}/g, projectName);
       fs.writeFileSync(seedDst, seedContent);
     }
   }
