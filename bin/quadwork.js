@@ -1469,7 +1469,11 @@ async function cmdAddProject() {
 
     writeQuadWorkConfig(setup);
 
-    const configTomlPath = path.join(setup.absDir, "agentchattr", "config.toml");
+    // Phase 2C / #181: config.toml lives at the per-project clone ROOT
+    // because AgentChattr's run.py loads ROOT/config.toml and ignores
+    // --config. Must match the install path used inside
+    // writeAgentChattrConfig(): CONFIG_DIR/{projectName}/agentchattr.
+    const configTomlPath = path.join(CONFIG_DIR, setup.projectName, "agentchattr", "config.toml");
     writeAgentChattrConfig(setup, configTomlPath);
 
     header("Project Added");
