@@ -71,6 +71,27 @@ router.put("/api/config", (req, res) => {
 const { resolveProjectChattr } = require("./config");
 const { installAgentChattr, findAgentChattr } = require("./install-agentchattr");
 
+/**
+ * Seed ~/.quadwork/{projectId}/OVERNIGHT-QUEUE.md from the template.
+ * Idempotent: never overwrites an existing file so user / Head
+ * agent edits are preserved across re-runs. All errors are swallowed
+ * — project creation should not abort over a docs file, and callers
+ * that need the file to exist should re-run setup.
+ */
+function writeOvernightQueueFileSafe(projectId, projectName, repo) {
+  try {
+    const queuePath = path.join(CONFIG_DIR, projectId, "OVERNIGHT-QUEUE.md");
+    if (fs.existsSync(queuePath)) return;
+    const tpl = path.join(TEMPLATES_DIR, "OVERNIGHT-QUEUE.md");
+    if (!fs.existsSync(tpl)) return;
+    fs.mkdirSync(path.dirname(queuePath), { recursive: true });
+    let content = fs.readFileSync(tpl, "utf-8");
+    content = content.replace(/\{\{project_name\}\}/g, projectName || projectId || "");
+    content = content.replace(/\{\{repo\}\}/g, repo || "");
+    fs.writeFileSync(queuePath, content);
+  } catch { /* non-fatal */ }
+}
+
 function getChattrConfig(projectId) {
   const resolved = resolveProjectChattr(projectId);
   return { url: resolved.url, token: resolved.token };
@@ -729,7 +750,15 @@ router.post("/api/setup", (req, res) => {
       let cfg;
       try { cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8")); }
       catch { cfg = { port: 8400, agentchattr_url: "http://127.0.0.1:8300", agentchattr_dir: path.join(os.homedir(), ".quadwork", "agentchattr"), projects: [] }; }
-      if (cfg.projects.some((p) => p.id === id)) return res.json({ ok: true, message: "Project already in config" });
+      if (cfg.projects.some((p) => p.id === id)) {
+        // Project already saved, but still (idempotently) seed the
+        // OVERNIGHT-QUEUE.md in case a previous run failed to write
+        // it or the operator deleted it. writeOvernightQueueFileSafe
+        // below no-ops when the file is already present, so this
+        // can't clobber Head/user edits.
+        writeOvernightQueueFileSafe(id, cfg.projects.find((p) => p.id === id)?.name || id, cfg.projects.find((p) => p.id === id)?.repo || "");
+        return res.json({ ok: true, message: "Project already in config" });
+      }
       // Match CLI wizard agent structure: { cwd, command, auto_approve, mcp_inject }
       const agents = {};
       for (const agentId of ["head", "reviewer1", "reviewer2", "dev"]) {
@@ -788,6 +817,11 @@ router.post("/api/setup", (req, res) => {
       const dir = path.dirname(CONFIG_PATH);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
+
+      // Batch 25 / #204: seed the per-project OVERNIGHT-QUEUE.md at
+      // ~/.quadwork/{id}/OVERNIGHT-QUEUE.md.
+      writeOvernightQueueFileSafe(id, name || id, repo);
+
       return res.json({ ok: true });
     }
     default:
