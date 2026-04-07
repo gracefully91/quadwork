@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
 
 interface OvernightQueueWidgetProps {
   projectId: string;
@@ -11,11 +12,10 @@ const REFRESH_MS = 10_000;
 /**
  * Bottom-right operator widget for OVERNIGHT-QUEUE.md (#209).
  *
- * Default state is read-only plain-text view of the raw markdown
- * (we deliberately skip a markdown renderer dep — the queue file is
- * structured enough that a monospace <pre> is legible and there are
- * no links/images in the template). Polls `GET /api/queue` every 10s
- * so Head agent updates show up without a manual refresh.
+ * Default state renders the queue file as markdown (via
+ * react-markdown) so headers, lists, and rules display as rich HTML
+ * the way operators expect. Polls `GET /api/queue` every 10s so
+ * Head agent updates show up without a manual refresh.
  *
  * Edit mode swaps to a textarea with a warning banner reminding
  * the operator that Head owns the file. Save hits `PUT /api/queue`;
@@ -159,7 +159,19 @@ export default function OvernightQueueWidget({ projectId }: OvernightQueueWidget
             className="w-full h-full p-3 bg-bg text-text text-[11px] font-mono resize-none outline-none"
           />
         ) : (
-          <pre className="p-3 text-[11px] font-mono whitespace-pre-wrap text-text">{content}</pre>
+          <div className="p-3 text-[12px] text-text prose prose-invert prose-sm max-w-none
+            [&_h1]:text-[14px] [&_h1]:font-semibold [&_h1]:mt-3 [&_h1]:mb-2
+            [&_h2]:text-[13px] [&_h2]:font-semibold [&_h2]:mt-3 [&_h2]:mb-1.5
+            [&_h3]:text-[12px] [&_h3]:font-semibold [&_h3]:mt-2 [&_h3]:mb-1
+            [&_p]:my-1.5 [&_ul]:my-1.5 [&_ul]:pl-4 [&_ul]:list-disc
+            [&_ol]:my-1.5 [&_ol]:pl-4 [&_ol]:list-decimal
+            [&_li]:my-0.5 [&_blockquote]:border-l-2 [&_blockquote]:border-border
+            [&_blockquote]:pl-2 [&_blockquote]:text-text-muted
+            [&_hr]:my-3 [&_hr]:border-border
+            [&_code]:bg-bg-surface [&_code]:px-1 [&_code]:rounded [&_code]:text-[11px]
+            [&_strong]:text-text [&_a]:text-accent [&_a]:underline">
+            <ReactMarkdown>{content}</ReactMarkdown>
+          </div>
         )}
       </div>
     </div>
