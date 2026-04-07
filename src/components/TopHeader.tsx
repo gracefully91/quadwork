@@ -102,10 +102,19 @@ export default function TopHeader() {
     return () => clearTimeout(t);
   }, [animationEnabled]);
   // First-cycle completion: a "deleting → empty → next variant"
-  // transition produces an empty `liveSuffix`. Show as soon as we
-  // observe the first one.
+  // transition produces an empty `liveSuffix` AFTER the typewriter
+  // has typed something. We need to wait until the suffix has been
+  // non-empty at least once before treating empty as "cycle done"
+  // — otherwise the initial mount value (also "") would trip this
+  // immediately. Use a ref so the gate doesn't re-trigger renders.
+  const hasTypedRef = useRef(false);
   useEffect(() => {
-    if (animationEnabled && liveSuffix === "") setShowToggle(true);
+    if (!animationEnabled) return;
+    if (liveSuffix.length > 0) {
+      hasTypedRef.current = true;
+    } else if (hasTypedRef.current) {
+      setShowToggle(true);
+    }
   }, [animationEnabled, liveSuffix]);
 
   return (
