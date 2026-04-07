@@ -11,6 +11,7 @@ interface TelegramStatus {
   running: boolean;
   configured: boolean;
   chat_id: string;
+  bot_username: string;
   bridge_installed: boolean;
 }
 
@@ -122,7 +123,7 @@ export default function TelegramBridgeWidget({ projectId }: TelegramBridgeWidget
             </>
           ) : (
             <>
-              <div className="flex items-center gap-2 text-[11px]">
+              <div className="flex items-center gap-2 text-[11px] flex-wrap">
                 {running ? (
                   <>
                     <span className="relative inline-flex items-center justify-center w-2 h-2">
@@ -137,8 +138,11 @@ export default function TelegramBridgeWidget({ projectId }: TelegramBridgeWidget
                     <span className="text-text-muted">Stopped</span>
                   </>
                 )}
+                {status?.bot_username && (
+                  <span className="text-text-muted">· Bot: @{status.bot_username}</span>
+                )}
                 {status?.chat_id && (
-                  <span className="text-text-muted tabular-nums">· chat: {status.chat_id}</span>
+                  <span className="text-text-muted tabular-nums">· Chat: {status.chat_id}</span>
                 )}
               </div>
               <div className="flex items-center gap-2 flex-wrap">

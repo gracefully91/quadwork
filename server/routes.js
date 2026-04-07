@@ -1002,29 +1002,50 @@ function getProjectTelegram(projectId) {
   }
 }
 
-router.get("/api/telegram", (req, res) => {
+router.get("/api/telegram", async (req, res) => {
   const projectId = req.query.project || "";
   if (!projectId) return res.status(400).json({ error: "Missing project" });
-  // #211: expose whether credentials are configured + the chat_id,
-  // but never the raw bot token. Widget uses `configured` + the last
-  // 4 chars of the stored token to decide between "Set up" and
-  // "Edit credentials" copy.
+  // #211: expose whether credentials are configured + the chat_id
+  // and the bot's @username (fetched from Telegram's getMe, cached
+  // on the project entry). Never returns the raw bot token.
   let configured = false;
   let chatId = "";
+  let botUsername = "";
   let bridgeInstalled = false;
+  let cfg = null;
+  let project = null;
   try {
-    const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8"));
-    const project = cfg.projects?.find((p) => p.id === projectId);
+    cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8"));
+    project = cfg.projects?.find((p) => p.id === projectId) || null;
     if (project?.telegram?.bot_token && project?.telegram?.chat_id) {
       configured = true;
       chatId = project.telegram.chat_id;
+      botUsername = project.telegram.bot_username || "";
     }
     bridgeInstalled = fs.existsSync(path.join(BRIDGE_DIR, "telegram_bridge.py"));
   } catch {}
+  // Lazy-resolve bot username via Telegram getMe the first time
+  // after a token is saved. Cache it on the project entry so later
+  // requests don't hit the network.
+  if (configured && !botUsername && project?.telegram?.bot_token && cfg) {
+    try {
+      const resolved = resolveToken(project.telegram.bot_token);
+      if (resolved) {
+        const r = await fetch(`https://api.telegram.org/bot${resolved}/getMe`);
+        const data = await r.json();
+        if (data && data.ok && data.result && typeof data.result.username === "string") {
+          botUsername = data.result.username;
+          project.telegram.bot_username = botUsername;
+          try { fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2)); } catch {}
+        }
+      }
+    } catch { /* non-fatal — widget will just show no username */ }
+  }
   res.json({
     running: isTelegramRunning(projectId),
     configured,
     chat_id: chatId,
+    bot_username: botUsername,
     bridge_installed: bridgeInstalled,
   });
 });
@@ -1136,6 +1157,9 @@ router.post("/api/telegram", async (req, res) => {
           ...(project.telegram || {}),
           bot_token: `env:${envKey}`,
           chat_id,
+          // Clear any cached bot_username — the next GET /api/telegram
+          // will re-fetch it from Telegram's getMe for the new token.
+          bot_username: "",
         };
         fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
         return res.json({ ok: true, env_key: envKey });
