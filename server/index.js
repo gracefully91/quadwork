@@ -398,12 +398,21 @@ async function handleAgentChattr(req, res) {
   const { url: chattrUrl } = resolveProjectChattr(projectId);
   const chattrPort = new URL(chattrUrl).port || "8300";
 
-  // Find per-project config.toml (prefer project working_dir/agentchattr/config.toml)
+  // Find per-project config.toml. Phase 2E / #181: prefer the
+  // per-project AgentChattr clone ROOT (where the web/CLI wizards now
+  // write it as of #184/#185 — and where run.py actually reads it from).
+  // Fall back to the legacy <working_dir>/agentchattr/config.toml for
+  // v1 setups that haven't been migrated yet (#188).
   const cfg = readConfig();
   const project = cfg.projects?.find((p) => p.id === projectId);
-  const projectConfigToml = project?.working_dir
-    ? path.join(project.working_dir, "agentchattr", "config.toml")
-    : null;
+  const { dir: resolvedAcDir } = resolveProjectChattr(projectId);
+  let projectConfigToml = null;
+  if (resolvedAcDir && fs.existsSync(path.join(resolvedAcDir, "config.toml"))) {
+    projectConfigToml = path.join(resolvedAcDir, "config.toml");
+  } else if (project?.working_dir) {
+    const legacyToml = path.join(project.working_dir, "agentchattr", "config.toml");
+    if (fs.existsSync(legacyToml)) projectConfigToml = legacyToml;
+  }
 
   function getProc() {
     return chattrProcesses.get(projectId) || { process: null, state: "stopped", error: null };
