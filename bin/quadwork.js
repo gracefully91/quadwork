@@ -929,25 +929,33 @@ function writeAgentChattrConfig(setup, configTomlPath, { skipInstall = false } =
   fs.writeFileSync(configTomlPath, tomlContent);
   ok(`Wrote ${configTomlPath}`);
 
-  // Start AgentChattr if available; optionally skip install attempt
-  const acDir = findAgentChattr();
+  // Phase 2C / #181: clone AgentChattr per-project at
+  // ~/.quadwork/{project_id}/agentchattr/. AgentChattr's run.py loads
+  // ROOT/config.toml, so each project needs its own clone to avoid
+  // multi-instance port conflicts (see master #181). The path is the
+  // same one writeQuadWorkConfig() persists in project.agentchattr_dir.
+  const perProjectDir = path.join(CONFIG_DIR, setup.projectName, "agentchattr");
+  let acDir = findAgentChattr(perProjectDir);
   let acAvailable = !!acDir;
   if (!acAvailable && !skipInstall) {
-    const acSpinner = spinner("Setting up AgentChattr...");
-    const installResult = installAgentChattr();
+    const acSpinner = spinner(`Setting up AgentChattr at ${perProjectDir}...`);
+    const installResult = installAgentChattr(perProjectDir);
     if (installResult) {
       acSpinner.stop(true);
+      acDir = installResult;
       acAvailable = true;
     } else {
       acSpinner.stop(false);
-      warn(`Install manually: git clone ${AGENTCHATTR_REPO} ${DEFAULT_AGENTCHATTR_DIR}`);
+      const reason = installAgentChattr.lastError || "unknown error";
+      warn(`AgentChattr install failed at ${perProjectDir}: ${reason}`);
+      warn(`Install manually: git clone ${AGENTCHATTR_REPO} ${perProjectDir}`);
     }
   }
 
   // Start AgentChattr server (only if installed)
   if (acAvailable) {
     log("Starting AgentChattr server...");
-    const acSpawn = chattrSpawnArgs(findAgentChattr(), ["--config", configTomlPath]);
+    const acSpawn = chattrSpawnArgs(acDir, ["--config", configTomlPath]);
     if (acSpawn) {
       const acProc = spawn(acSpawn.command, acSpawn.spawnArgs, {
         cwd: acSpawn.cwd,
@@ -964,14 +972,14 @@ function writeAgentChattrConfig(setup, configTomlPath, { skipInstall = false } =
         const pidFile = path.join(CONFIG_DIR, `agentchattr-${setup.projectName}.pid`);
         fs.writeFileSync(pidFile, String(acProc.pid));
       } else {
-        warn("Could not start AgentChattr — check logs in " + (findAgentChattr() || DEFAULT_AGENTCHATTR_DIR));
+        warn("Could not start AgentChattr — check logs in " + (acDir || perProjectDir));
       }
     } else {
       warn("AgentChattr run.py not found — skipping auto-start.");
     }
   } else {
     warn("AgentChattr not installed — skipping auto-start.");
-    log(`  → Install: git clone ${AGENTCHATTR_REPO} ${DEFAULT_AGENTCHATTR_DIR}`);
+    log(`  → Install: git clone ${AGENTCHATTR_REPO} ${perProjectDir}`);
   }
 
   return configTomlPath;
