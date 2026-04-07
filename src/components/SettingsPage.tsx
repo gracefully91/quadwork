@@ -11,13 +11,10 @@ interface AgentConfig {
   agents_md: string;
 }
 
-interface TelegramConfig {
-  enabled: boolean;
-  bot_token: string;
-  chat_id: string;
-  status?: string;
-}
-
+// Per-project Telegram config + Scheduled Trigger fields are still on
+// the ProjectConfig type (other code paths read them) but the
+// Settings page no longer renders them — both moved to per-project
+// widgets in #210 and #211.
 interface ProjectConfig {
   id: string;
   name: string;
@@ -28,10 +25,6 @@ interface ProjectConfig {
   agentchattr_token?: string;
   mcp_http_port?: number;
   mcp_sse_port?: number;
-  telegram?: TelegramConfig;
-  trigger_enabled?: boolean;
-  trigger_interval?: number;
-  trigger_message?: string;
   archived?: boolean;
 }
 
@@ -103,10 +96,12 @@ export default function SettingsPage() {
   const [config, setConfig] = useState<Config | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  // #212: drop the per-project accordion. AGENTS.md edit toggles
+  // still need a per-key flag, so we keep `expanded` but no longer
+  // gate the project body on it — every project is open by default.
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [autoAdded, setAutoAdded] = useState(false);
-  const [daemonStatus, setDaemonStatus] = useState<Record<string, boolean>>({});
   const [cliStatus, setCliStatus] = useState<{ claude: boolean; codex: boolean } | null>(null);
 
   const load = useCallback(() => {
@@ -134,21 +129,6 @@ export default function SettingsPage() {
       .catch(() => {});
   }, []);
 
-  // Poll telegram daemon status for each project
-  useEffect(() => {
-    if (!config) return;
-    for (const p of config.projects) {
-      if (p.telegram?.bot_token) {
-        fetch(`/api/telegram?project=${encodeURIComponent(p.id)}`)
-          .then((r) => r.ok ? r.json() : null)
-          .then((d) => {
-            if (d) setDaemonStatus((prev) => ({ ...prev, [p.id]: d.running }));
-          })
-          .catch(() => {});
-      }
-    }
-  }, [config]);
-
   // Auto-add project when navigated with ?add=true
   useEffect(() => {
     if (config && searchParams.get("add") === "true" && !autoAdded) {
@@ -161,24 +141,14 @@ export default function SettingsPage() {
     if (!config) return;
     setSaving(true);
     try {
-      // Save bot tokens securely to .env via telegram API, then strip from config
-      const configToSave = JSON.parse(JSON.stringify(config));
-      for (const project of configToSave.projects) {
-        if (project.telegram?.bot_token && !project.telegram.bot_token.startsWith("env:")) {
-          await fetch("/api/telegram?action=save-token", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ project_id: project.id, bot_token: project.telegram.bot_token }),
-          });
-          // Config will be updated by save-token to use env: reference
-          const envKey = `TELEGRAM_BOT_TOKEN_${project.id.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;
-          project.telegram.bot_token = `env:${envKey}`;
-        }
-      }
+      // #212: Telegram credentials are now configured per-project from
+      // the bottom-right Telegram Bridge widget (#211), which writes
+      // its own env-references via /api/telegram?action=save-config.
+      // The Settings save path no longer needs to migrate bot tokens.
       const res = await fetch("/api/config", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(configToSave),
+        body: JSON.stringify(config),
       });
       if (!res.ok) throw new Error(`${res.status}`);
       setSaved(true);
@@ -210,13 +180,6 @@ export default function SettingsPage() {
     setConfig({ ...config, projects });
   };
 
-  const updateTelegram = (projectIdx: number, updates: Partial<TelegramConfig>) => {
-    if (!config) return;
-    const projects = [...config.projects];
-    const telegram = { enabled: false, bot_token: "", chat_id: "", ...projects[projectIdx].telegram, ...updates };
-    projects[projectIdx] = { ...projects[projectIdx], telegram };
-    setConfig({ ...config, projects });
-  };
 
   const addProject = () => {
     if (!config) return;
@@ -326,7 +289,7 @@ export default function SettingsPage() {
   if (!config) return <div className="p-6 text-text-muted text-xs">Loading...</div>;
 
   return (
-    <div className="h-full overflow-y-auto p-6 max-w-3xl">
+    <div className="h-full w-full overflow-y-auto p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-lg font-semibold text-text tracking-tight">Settings</h1>
         <button
@@ -338,22 +301,45 @@ export default function SettingsPage() {
         </button>
       </div>
 
-      {/* Global Settings */}
-      <section className="mb-6">
+      {/* Global Settings (#212: full-width grid, every section visible) */}
+      <section className="mb-8">
         <h2 className="text-[11px] text-text-muted uppercase tracking-wider mb-3">Global</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <Input
-            label="AgentChattr URL"
-            value={config.agentchattr_url}
-            onChange={(v) => updateGlobal("agentchattr_url", v)}
-            placeholder="http://127.0.0.1:8300"
-          />
-          <Input
-            label="QuadWork Port"
+            label="QuadWork Dashboard Port"
             value={String(config.port)}
             onChange={(v) => updateGlobal("port", parseInt(v, 10) || 8400)}
             type="number"
           />
+          <Input
+            label="AgentChattr URL (global override)"
+            value={config.agentchattr_url}
+            onChange={(v) => updateGlobal("agentchattr_url", v)}
+            placeholder="http://127.0.0.1:8300"
+          />
+        </div>
+        <p className="mt-2 text-[10px] text-text-muted leading-snug">
+          The dashboard binds to the QuadWork port. The AgentChattr URL is the v1 fallback;
+          new projects use a per-project AgentChattr clone (master #181) and ignore this field.
+        </p>
+      </section>
+
+      {/* Cleanup commands (#212 / #189) */}
+      <section className="mb-8">
+        <h2 className="text-[11px] text-text-muted uppercase tracking-wider mb-3">Cleanup</h2>
+        <div className="border border-border p-3 text-[11px] text-text-muted space-y-1">
+          <p>
+            Each project now has its own AgentChattr clone at
+            {" "}<code className="bg-bg-surface px-1 rounded">~/.quadwork/&#123;id&#125;/agentchattr</code>
+            {" "}(~77 MB). After all projects are migrated, the legacy global install can be removed:
+          </p>
+          <pre className="mt-1 p-2 bg-bg-surface text-text rounded font-mono text-[11px]">npx quadwork cleanup --legacy</pre>
+          <p className="mt-2">To remove a single project&apos;s clone and config entry:</p>
+          <pre className="mt-1 p-2 bg-bg-surface text-text rounded font-mono text-[11px]">npx quadwork cleanup --project &lt;id&gt;</pre>
+          <p className="mt-2 text-text-muted/80">
+            Both commands prompt for confirmation. Worktrees and source repos are never touched.
+            See <code>npx quadwork --help</code> or the README&apos;s Disk Usage section for details.
+          </p>
         </div>
       </section>
 
@@ -365,21 +351,15 @@ export default function SettingsPage() {
 
         {config.projects.filter((p) => !p.archived).map((project) => {
           const idx = config.projects.indexOf(project);
-          const isExpanded = expanded[project.id] ?? false;
-          const telegram = project.telegram || { enabled: false, bot_token: "", chat_id: "" };
 
           return (
             <div key={project.id} className="border border-border mb-3">
-              {/* Header */}
-              <button
-                className="w-full flex items-center justify-between px-3 py-2 hover:bg-[#1a1a1a] transition-colors"
-                onClick={() => setExpanded({ ...expanded, [project.id]: !isExpanded })}
-              >
+              {/* Header — #212: no accordion, body always visible */}
+              <div className="flex items-center justify-between px-3 py-2">
                 <span className="text-[12px] text-text font-semibold">{project.name}</span>
-                <span className="text-[11px] text-text-muted">{isExpanded ? "▾" : "▸"}</span>
-              </button>
+              </div>
 
-              {isExpanded && (
+              {(
                 <div className="px-3 pb-3 border-t border-border">
                   {/* Basic project info */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
@@ -531,138 +511,11 @@ export default function SettingsPage() {
                     </div>
                   </div>
 
-                  {/* Scheduled Trigger */}
-                  <div className="mt-4">
-                    <h3 className="text-[10px] text-text-muted uppercase tracking-wider mb-2">Scheduled Trigger</h3>
-                    <div className="border border-border p-3">
-                      <div className="flex items-center gap-3 mb-3">
-                        <button
-                          onClick={() => updateProject(idx, { trigger_enabled: !project.trigger_enabled } as Partial<ProjectConfig>)}
-                          className={`w-8 h-4 rounded-full transition-colors relative ${
-                            project.trigger_enabled ? "bg-accent" : "bg-border"
-                          }`}
-                        >
-                          <span
-                            className={`absolute top-0.5 w-3 h-3 rounded-full bg-text transition-transform ${
-                              project.trigger_enabled ? "left-4" : "left-0.5"
-                            }`}
-                          />
-                        </button>
-                        <span className="text-[11px] text-text">{project.trigger_enabled ? "Enabled" : "Disabled"}</span>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-                        <Input
-                          label="Interval (minutes)"
-                          value={String(project.trigger_interval || 30)}
-                          onChange={(v) => updateProject(idx, { trigger_interval: parseInt(v, 10) || 30 } as Partial<ProjectConfig>)}
-                          type="number"
-                        />
-                        <div className="flex flex-col gap-1">
-                          <label className="text-[11px] text-text-muted uppercase tracking-wider">Message Template</label>
-                          <textarea
-                            value={project.trigger_message || ""}
-                            onChange={(e) => updateProject(idx, { trigger_message: e.target.value } as Partial<ProjectConfig>)}
-                            placeholder="@head @reviewer1 @reviewer2 @dev — Queue check..."
-                            rows={4}
-                            className="bg-transparent border border-border px-2 py-1.5 text-[11px] text-text outline-none focus:border-accent resize-y"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Telegram Bridge */}
-                  <div className="mt-4">
-                    <h3 className="text-[10px] text-text-muted uppercase tracking-wider mb-2">Telegram Bridge</h3>
-                    <div className="border border-border p-3">
-                      <div className="flex items-center gap-3 mb-3">
-                        <button
-                          onClick={() => updateTelegram(idx, { enabled: !telegram.enabled })}
-                          className={`w-8 h-4 rounded-full transition-colors relative ${
-                            telegram.enabled ? "bg-accent" : "bg-border"
-                          }`}
-                        >
-                          <span
-                            className={`absolute top-0.5 w-3 h-3 rounded-full bg-text transition-transform ${
-                              telegram.enabled ? "left-4" : "left-0.5"
-                            }`}
-                          />
-                        </button>
-                        <span className="text-[11px] text-text">{telegram.enabled ? "Enabled" : "Disabled"}</span>
-                        <span className="text-[11px] text-text-muted">·</span>
-                        <span className={`w-1.5 h-1.5 rounded-full ${daemonStatus[project.id] ? "bg-accent" : "bg-text-muted"}`} />
-                        <span className="text-[11px] text-text-muted">
-                          {daemonStatus[project.id] ? "running" : "stopped"}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-                        <Input
-                          label="Bot Token"
-                          value={telegram.bot_token}
-                          onChange={(v) => updateTelegram(idx, { bot_token: v })}
-                          type="password"
-                          placeholder="123456:ABC-DEF..."
-                        />
-                        <Input
-                          label="Chat ID"
-                          value={telegram.chat_id}
-                          onChange={(v) => updateTelegram(idx, { chat_id: v })}
-                          placeholder="-1001234567890"
-                        />
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => {
-                            fetch("/api/telegram?action=test", {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ bot_token: telegram.bot_token, chat_id: telegram.chat_id }),
-                            })
-                              .then((r) => r.json())
-                              .then((d) => alert(d.ok ? "Connection OK" : `Error: ${d.error}`))
-                              .catch(() => alert("Test failed"));
-                          }}
-                          className="px-2 py-1 text-[11px] border border-border text-text-muted hover:text-text hover:border-accent transition-colors"
-                        >
-                          Test Connection
-                        </button>
-                        <button
-                          onClick={() => {
-                            fetch("/api/telegram?action=install", { method: "POST" })
-                              .then((r) => r.json())
-                              .then((d) => alert(d.ok ? "Installed" : `Error: ${d.error}`))
-                              .catch(() => alert("Install failed"));
-                          }}
-                          className="px-2 py-1 text-[11px] border border-border text-text-muted hover:text-text hover:border-accent transition-colors"
-                        >
-                          Install Bridge
-                        </button>
-                        <button
-                          onClick={() => {
-                            const action = daemonStatus[project.id] ? "stop" : "start";
-                            fetch(`/api/telegram?action=${action}`, {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ project_id: project.id }),
-                            })
-                              .then((r) => r.json())
-                              .then((d) => {
-                                if (d.ok) setDaemonStatus((prev) => ({ ...prev, [project.id]: d.running }));
-                                else alert(`Error: ${d.error}`);
-                              })
-                              .catch(() => alert(`${action} failed`));
-                          }}
-                          className={`px-2 py-1 text-[11px] border border-border transition-colors ${
-                            daemonStatus[project.id]
-                              ? "text-error hover:border-error"
-                              : "text-accent hover:border-accent"
-                          }`}
-                        >
-                          {daemonStatus[project.id] ? "Stop Daemon" : "Start Daemon"}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+                  {/* #212: Scheduled Trigger and Telegram Bridge sections
+                       were here. Both have been moved to per-project
+                       widgets in the bottom-right Operator Features
+                       quadrant (#210 + #211). Configure them from
+                       the project page. */}
 
                   {/* Remove project */}
                   <div className="mt-4 flex justify-end gap-3">
