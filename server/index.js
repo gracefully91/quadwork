@@ -268,7 +268,10 @@ async function buildAgentArgs(projectId, agentId) {
     } else if (injectMode === "proxy_flag") {
       // Codex: register with AgentChattr first (#240) so the proxy
       // injects a real per-agent token, not the global session token.
-      const acServerPort = Number(new URL(project.agentchattr_url).port) || 8300;
+      // Resolve via resolveProjectChattr so legacy/global-config
+      // projects without a per-project agentchattr_url still work.
+      const chattrInfo = resolveProjectChattr(projectId);
+      const acServerPort = Number(new URL(chattrInfo.url).port) || 8300;
       await waitForAgentChattrReady(acServerPort);
       const registration = await registerAgent(acServerPort, agentId, agentCfg.display_name || null);
       if (!registration) {
