@@ -1,0 +1,65 @@
+[e2e] Sandbox:    /var/folders/h2/jnwv3mw16k14k74gb7mqf4xm0000gn/T/qw-e2e-1775569448654
+[e2e] Projects:   project-a(8351), project-b(8361), project-c(8371)
+[e2e] Skip install: yes (local clone source: /Users/cho/.quadwork/agentchattr)
+[e2e] Created sandbox at /var/folders/h2/jnwv3mw16k14k74gb7mqf4xm0000gn/T/qw-e2e-1775569448654
+[e2e] installAgentChattr(/var/folders/h2/jnwv3mw16k14k74gb7mqf4xm0000gn/T/qw-e2e-1775569448654/project-a/agentchattr)
+[e2e]   git clone /Users/cho/.quadwork/agentchattr → /var/folders/h2/jnwv3mw16k14k74gb7mqf4xm0000gn/T/qw-e2e-1775569448654/project-a/agentchattr
+Cloning into '/var/folders/h2/jnwv3mw16k14k74gb7mqf4xm0000gn/T/qw-e2e-1775569448654/project-a/agentchattr'...
+done.
+[e2e]   creating venv at /var/folders/h2/jnwv3mw16k14k74gb7mqf4xm0000gn/T/qw-e2e-1775569448654/project-a/agentchattr/.venv (system-site-packages)
+[e2e] OK   install project-a → /var/folders/h2/jnwv3mw16k14k74gb7mqf4xm0000gn/T/qw-e2e-1775569448654/project-a/agentchattr
+[e2e] installAgentChattr(/var/folders/h2/jnwv3mw16k14k74gb7mqf4xm0000gn/T/qw-e2e-1775569448654/project-b/agentchattr)
+[e2e]   git clone /Users/cho/.quadwork/agentchattr → /var/folders/h2/jnwv3mw16k14k74gb7mqf4xm0000gn/T/qw-e2e-1775569448654/project-b/agentchattr
+Cloning into '/var/folders/h2/jnwv3mw16k14k74gb7mqf4xm0000gn/T/qw-e2e-1775569448654/project-b/agentchattr'...
+done.
+[e2e]   creating venv at /var/folders/h2/jnwv3mw16k14k74gb7mqf4xm0000gn/T/qw-e2e-1775569448654/project-b/agentchattr/.venv (system-site-packages)
+[e2e] OK   install project-b → /var/folders/h2/jnwv3mw16k14k74gb7mqf4xm0000gn/T/qw-e2e-1775569448654/project-b/agentchattr
+[e2e] installAgentChattr(/var/folders/h2/jnwv3mw16k14k74gb7mqf4xm0000gn/T/qw-e2e-1775569448654/project-c/agentchattr)
+[e2e]   git clone /Users/cho/.quadwork/agentchattr → /var/folders/h2/jnwv3mw16k14k74gb7mqf4xm0000gn/T/qw-e2e-1775569448654/project-c/agentchattr
+Cloning into '/var/folders/h2/jnwv3mw16k14k74gb7mqf4xm0000gn/T/qw-e2e-1775569448654/project-c/agentchattr'...
+done.
+[e2e]   creating venv at /var/folders/h2/jnwv3mw16k14k74gb7mqf4xm0000gn/T/qw-e2e-1775569448654/project-c/agentchattr/.venv (system-site-packages)
+[e2e] OK   install project-c → /var/folders/h2/jnwv3mw16k14k74gb7mqf4xm0000gn/T/qw-e2e-1775569448654/project-c/agentchattr
+[e2e] OK   wrote /var/folders/h2/jnwv3mw16k14k74gb7mqf4xm0000gn/T/qw-e2e-1775569448654/project-a/agentchattr/config.toml (port 8351)
+[e2e] OK   wrote /var/folders/h2/jnwv3mw16k14k74gb7mqf4xm0000gn/T/qw-e2e-1775569448654/project-b/agentchattr/config.toml (port 8361)
+[e2e] OK   wrote /var/folders/h2/jnwv3mw16k14k74gb7mqf4xm0000gn/T/qw-e2e-1775569448654/project-c/agentchattr/config.toml (port 8371)
+[e2e] spawned project-a pid=13682 log=/var/folders/h2/jnwv3mw16k14k74gb7mqf4xm0000gn/T/qw-e2e-1775569448654/project-a.log
+[e2e] spawned project-b pid=13683 log=/var/folders/h2/jnwv3mw16k14k74gb7mqf4xm0000gn/T/qw-e2e-1775569448654/project-b.log
+[e2e] spawned project-c pid=13684 log=/var/folders/h2/jnwv3mw16k14k74gb7mqf4xm0000gn/T/qw-e2e-1775569448654/project-c.log
+[e2e] OK   project-a listening on 8351
+[e2e] OK   project-b listening on 8361
+[e2e] OK   project-c listening on 8371
+
+--- lsof per project ---
+# project-a (8351)
+COMMAND   PID USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+Python  13682  cho   18u  IPv4 0xad6c491d79eec3ab      0t0  TCP 127.0.0.1:8351 (LISTEN)
+# project-b (8361)
+COMMAND   PID USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+Python  13683  cho   18u  IPv4 0x84f4a03a1f5fbb62      0t0  TCP 127.0.0.1:8361 (LISTEN)
+# project-c (8371)
+COMMAND   PID USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+Python  13684  cho   18u  IPv4 0x567ef0a93c4d873d      0t0  TCP 127.0.0.1:8371 (LISTEN)
+
+--- curl per project ---
+# project-a
+  ok=true  bodyLen=20841
+# project-b
+  ok=true  bodyLen=20841
+# project-c
+  ok=true  bodyLen=20841
+[e2e] OK   all 3 ports bound to distinct pids — no collisions
+
+--- restart project-b ---
+[e2e] OK   project-b released 8361
+[e2e] OK   project-a still listening on 8351
+[e2e] OK   project-c still listening on 8371
+[e2e] OK   project-b restarted on 8361 (pid 13995)
+
+--- shutdown ---
+[e2e] OK   project-a released 8351
+[e2e] OK   project-b released 8361
+[e2e] OK   project-c released 8371
+[e2e] Sandbox kept at /var/folders/h2/jnwv3mw16k14k74gb7mqf4xm0000gn/T/qw-e2e-1775569448654 (--keep)
+
+[e2e] === PASS ===
