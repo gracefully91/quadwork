@@ -1384,20 +1384,44 @@ function migrateLegacyProjects(config) {
     // 2. Seed config.toml at the clone ROOT from the legacy in-worktree
     //    location if present. Do not overwrite an existing per-project
     //    config.toml — re-running the migration must be a no-op.
+    //
+    //    If the legacy toml exists but the copy fails, we MUST NOT persist
+    //    agentchattr_dir — otherwise #186's resolver would switch this
+    //    project to a clone that lacks the project's real ports, and
+    //    AgentChattr would silently start on run.py defaults. Leaving
+    //    agentchattr_dir unset keeps the project on the legacy global
+    //    install via #186's fallback ladder until the next attempt.
     const targetToml = path.join(perProjectDir, "config.toml");
-    if (!fs.existsSync(targetToml) && project.working_dir) {
+    let tomlReady = fs.existsSync(targetToml);
+    if (!tomlReady && project.working_dir) {
       const legacyToml = path.join(project.working_dir, "agentchattr", "config.toml");
       if (fs.existsSync(legacyToml)) {
         try {
           fs.copyFileSync(legacyToml, targetToml);
           log(`    Copied legacy config.toml → ${targetToml}`);
+          tomlReady = true;
         } catch (e) {
           warn(`    Could not copy ${legacyToml}: ${e.message}`);
+          warn(`    ${project.id} migration aborted: legacy config.toml not transferred.`);
+          warn(`    ${project.id} will keep using the legacy global install via #186 fallback.`);
+          continue;
         }
+      } else {
+        // No legacy toml at all (e.g. user removed it). Refuse to migrate
+        // — without a config.toml at the clone ROOT, run.py would start
+        // on built-in defaults and bind to the wrong ports.
+        warn(`    ${project.id} has no legacy config.toml at ${legacyToml}; skipping migration.`);
+        warn(`    Re-run setup to regenerate config.toml, then 'quadwork start' will retry migration.`);
+        continue;
       }
     }
+    if (!tomlReady) {
+      warn(`    ${project.id} migration aborted: no config.toml at ${targetToml}.`);
+      continue;
+    }
 
-    // 3. Persist agentchattr_dir on the project entry.
+    // 3. Persist agentchattr_dir on the project entry — only after the
+    //    clone has run.py + venv + config.toml all in place.
     if (project.agentchattr_dir !== perProjectDir) {
       project.agentchattr_dir = perProjectDir;
       mutated = true;
