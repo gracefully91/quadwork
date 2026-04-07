@@ -383,8 +383,11 @@ async function spawnAgentPty(project, agent) {
   }
 }
 
-// Helper: stop an agent session — kill PTY, close WS
-function stopAgentSession(key) {
+// Helper: stop an agent session — kill PTY, close WS, deregister.
+// Async because deregister must complete before a restart re-registers,
+// otherwise the old slot stays occupied and a fresh register lands at
+// head-2 instead of slot 1 (#241).
+async function stopAgentSession(key) {
   const session = agentSessions.get(key);
   if (!session) {
     agentSessions.set(key, { projectId: null, agentId: null, term: null, ws: null, state: "stopped", error: null });
@@ -403,7 +406,11 @@ function stopAgentSession(key) {
   // Best-effort deregister from AgentChattr (#241) so the slot frees
   // and the next register lands at slot 1 instead of head-2.
   if (session.acRegistrationName && session.acServerPort) {
-    deregisterAgent(session.acServerPort, session.acRegistrationName).catch(() => {});
+    try {
+      await deregisterAgent(session.acServerPort, session.acRegistrationName);
+    } catch {
+      // best-effort — failures are non-fatal
+    }
     session.acRegistrationName = null;
   }
   // Clean up MCP auth proxy if running
@@ -670,10 +677,10 @@ app.post("/api/agents/:project/:agent/start", async (req, res) => {
 
 // --- Lifecycle: stop kills PTY + closes WS ---
 
-app.post("/api/agents/:project/:agent/stop", (req, res) => {
+app.post("/api/agents/:project/:agent/stop", async (req, res) => {
   const { project, agent } = req.params;
   const key = `${project}/${agent}`;
-  stopAgentSession(key);
+  await stopAgentSession(key);
   res.json({ ok: true, state: "stopped" });
 });
 
@@ -683,16 +690,16 @@ app.post("/api/agents/:project/:agent/restart", async (req, res) => {
   const { project, agent } = req.params;
   const key = `${project}/${agent}`;
 
-  stopAgentSession(key);
+  // #241: must await deregister before respawn so the slot frees and
+  // the fresh register lands at slot 1 instead of head-2.
+  await stopAgentSession(key);
 
-  setTimeout(async () => {
-    const result = await spawnAgentPty(project, agent);
-    if (result.ok) {
-      res.json({ ok: true, state: "running", pid: result.pid });
-    } else {
-      res.status(500).json({ ok: false, state: "error", error: result.error });
-    }
-  }, 500);
+  const result = await spawnAgentPty(project, agent);
+  if (result.ok) {
+    res.json({ ok: true, state: "running", pid: result.pid });
+  } else {
+    res.status(500).json({ ok: false, state: "error", error: result.error });
+  }
 });
 
 // --- Sessions tracking (for /api/projects dashboard) ---
