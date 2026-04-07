@@ -98,7 +98,17 @@ function resolveProjectChattr(projectId) {
     token: project?.agentchattr_token || config.agentchattr_token || null,
     mcp_http_port: project?.mcp_http_port || null,
     mcp_sse_port: project?.mcp_sse_port || null,
-    dir: project?.agentchattr_dir || config.agentchattr_dir || path.join(os.homedir(), ".quadwork", "agentchattr"),
+    // Resolution order:
+    //   1. project.agentchattr_dir   — per-project clone (Option B, current default)
+    //   2. config.agentchattr_dir    — legacy global clone (v1 backward compat)
+    //   3. ~/.quadwork/{projectId}/agentchattr — per-project default path
+    //      (used when neither value is set; matches what new projects will write)
+    dir:
+      project?.agentchattr_dir ||
+      config.agentchattr_dir ||
+      (projectId
+        ? path.join(os.homedir(), ".quadwork", projectId, "agentchattr")
+        : path.join(os.homedir(), ".quadwork", "agentchattr")),
   };
 }
 
