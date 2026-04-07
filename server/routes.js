@@ -590,21 +590,26 @@ router.post("/api/setup", (req, res) => {
         const wtDir = path.join(parentDir, `${dirName}-${agent}`);
         if (!fs.existsSync(wtDir)) continue;
 
-        // AGENTS.md — use template with placeholder substitution (matches CLI)
+        // AGENTS.md — always (re)write from template so role definitions
+        // stay in sync with templates/seeds/ on every project (re)creation.
+        // Previously this was guarded by `!exists`, so if a worktree already
+        // had any AGENTS.md (stale, hand-edited, or empty) it was preserved
+        // forever and agents could launch with no/outdated role definition.
         const agentsMd = path.join(wtDir, "AGENTS.md");
-        if (!fs.existsSync(agentsMd)) {
-          const seedSrc = path.join(TEMPLATES_DIR, "seeds", `${agent}.AGENTS.md`);
-          if (fs.existsSync(seedSrc)) {
-            let content = fs.readFileSync(seedSrc, "utf-8");
-            content = content.replace(/\{\{reviewer_github_user\}\}/g, reviewerUser);
-            content = content.replace(/\{\{reviewer_token_path\}\}/g, reviewerTokenPath);
-            fs.writeFileSync(agentsMd, content);
-          } else {
-            // Fallback stub if template missing
-            fs.writeFileSync(agentsMd, `# ${dirName} — ${agent.charAt(0).toUpperCase() + agent.slice(1)} Agent\n\nRepo: ${body.repo}\nRole: ${agent === "head" ? "Owner" : agent.startsWith("reviewer") ? "Reviewer" : "Builder"}\n`);
-          }
-          seeded.push(`${agent}/AGENTS.md`);
+        const seedSrc = path.join(TEMPLATES_DIR, "seeds", `${agent}.AGENTS.md`);
+        if (!fs.existsSync(seedSrc)) {
+          // Hard fail: missing seed means role is undefined. Better to surface
+          // the error than silently write a generic stub.
+          return res.json({
+            ok: false,
+            error: `Missing seed template: templates/seeds/${agent}.AGENTS.md`,
+          });
         }
+        let agentsContent = fs.readFileSync(seedSrc, "utf-8");
+        agentsContent = agentsContent.replace(/\{\{reviewer_github_user\}\}/g, reviewerUser);
+        agentsContent = agentsContent.replace(/\{\{reviewer_token_path\}\}/g, reviewerTokenPath);
+        fs.writeFileSync(agentsMd, agentsContent);
+        seeded.push(`${agent}/AGENTS.md`);
 
         // CLAUDE.md — use template with placeholder substitution (matches CLI)
         const claudeMd = path.join(wtDir, "CLAUDE.md");
