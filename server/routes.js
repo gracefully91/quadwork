@@ -122,19 +122,108 @@ router.get("/api/chat", async (req, res) => {
   }
 });
 
-router.post("/api/chat", async (req, res) => {
-  const { url: base, token } = getChattrConfig(req.query.project || req.body.project);
-  const tokenParam = token ? `?token=${encodeURIComponent(token)}` : "";
-  try {
-    const r = await fetch(`${base}/api/send${tokenParam}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...chatAuthHeaders(token) },
-      body: JSON.stringify(req.body),
+// #225 sub-E: send chat messages from the dashboard via the
+// AgentChattr WebSocket, not via /api/send.
+//
+// /api/send requires `Authorization: Bearer <registration_token>` and
+// the token must resolve to a registered instance via
+// `registry.resolve_token()`. The session_token we store on the
+// project entry only authorizes browser/middleware traffic — it is
+// NOT a registration token, so /api/send always 401s with
+// "missing Authorization: Bearer <token>". The dashboard browser
+// already sends through the WebSocket on `/ws?token=<session_token>`
+// and the server accepts that path, so we mirror that exact flow
+// from the express server: open a one-shot ws, push the message,
+// wait briefly for ack, close.
+const { WebSocket: NodeWebSocket } = require("ws");
+const { syncChattrToken } = require("./config");
+
+function sendViaWebSocket(baseUrl, sessionToken, message) {
+  return new Promise((resolve, reject) => {
+    const wsUrl = `${baseUrl.replace(/^http/, "ws")}/ws?token=${encodeURIComponent(sessionToken || "")}`;
+    const ws = new NodeWebSocket(wsUrl);
+    let settled = false;
+    const finish = (err, value) => {
+      if (settled) return;
+      settled = true;
+      try { ws.close(); } catch {}
+      if (err) reject(err); else resolve(value);
+    };
+    const giveUp = setTimeout(() => finish(new Error("websocket send timeout")), 4000);
+    ws.on("open", () => {
+      try {
+        ws.send(JSON.stringify({ type: "message", ...message }));
+        // Server acks via broadcast, but the dashboard's POST /api/chat
+        // contract only needs to know the message was accepted. Wait
+        // ~250ms for the server to enqueue + close cleanly.
+        setTimeout(() => { clearTimeout(giveUp); finish(null, { ok: true }); }, 250);
+      } catch (err) { clearTimeout(giveUp); finish(err); }
     });
-    if (!r.ok) return res.status(r.status).json({ error: `AgentChattr returned ${r.status}` });
-    res.json(await r.json());
+    ws.on("error", (err) => { clearTimeout(giveUp); finish(err); });
+    ws.on("close", (code, reason) => {
+      // Code 4003 = bad token (see app.py /ws handler). Surface as
+      // 401 so the dashboard's chat error banner shows the right thing.
+      if (!settled && code === 4003) {
+        clearTimeout(giveUp);
+        const msg = (reason && reason.toString()) || "forbidden: invalid session token";
+        const e = new Error(msg);
+        e.code = "EAGENTCHATTR_401";
+        finish(e);
+      }
+    });
+  });
+}
+
+router.post("/api/chat", async (req, res) => {
+  const projectId = req.query.project || req.body.project;
+  const { url: base, token: sessionToken } = getChattrConfig(projectId);
+  if (!base) return res.status(400).json({ error: "Missing project" });
+
+  // #230: ignore any client-supplied sender. /api/chat is the
+  // dashboard's send path, so the message must always be attributed
+  // to "user". Forwarding `req.body.sender` would let any caller
+  // hitting QuadWork's /api/chat impersonate an agent identity (t1,
+  // t3, …) over the AgentChattr ws path, which the old /api/send
+  // flow could not do.
+  const message = {
+    text: typeof req.body?.text === "string" ? req.body.text : "",
+    channel: req.body?.channel || "general",
+    sender: "user",
+    attachments: Array.isArray(req.body?.attachments) ? req.body.attachments : [],
+  };
+  if (!message.text && message.attachments.length === 0) {
+    return res.status(400).json({ error: "text or attachments required" });
+  }
+
+  const attemptSend = () => sendViaWebSocket(base, sessionToken, message);
+
+  try {
+    await attemptSend();
+    return res.json({ ok: true });
   } catch (err) {
-    res.status(502).json({ error: "AgentChattr unreachable", detail: err.message });
+    // If the cached session_token is stale (AgentChattr regenerates
+    // one on every restart) the ws closes with code 4003 — re-sync
+    // the token from AgentChattr's HTML and retry once before giving
+    // up. This is the actual fix for the "401 after restart" report
+    // in #230 (the cache was stuck on an old token).
+    if (err && err.code === "EAGENTCHATTR_401") {
+      console.warn(`[chat] ws auth failed for project ${projectId}, re-syncing session token and retrying...`);
+      try { await syncChattrToken(projectId); }
+      catch (syncErr) { console.warn(`[chat] syncChattrToken failed: ${syncErr.message}`); }
+      const { token: refreshed } = getChattrConfig(projectId);
+      if (refreshed && refreshed !== sessionToken) {
+        try {
+          await sendViaWebSocket(base, refreshed, message);
+          return res.json({ ok: true, resynced: true });
+        } catch (retryErr) {
+          console.warn(`[chat] retry after token resync failed: ${retryErr.message}`);
+          return res.status(401).json({ error: "AgentChattr auth failed (token resync did not help)", detail: retryErr.message });
+        }
+      }
+      return res.status(401).json({ error: "AgentChattr auth failed", detail: err.message });
+    }
+    console.warn(`[chat] send failed for project ${projectId}: ${err && err.message}`);
+    return res.status(502).json({ error: "AgentChattr unreachable", detail: err && err.message });
   }
 });
 
