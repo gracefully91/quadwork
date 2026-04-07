@@ -8,6 +8,7 @@ const pty = require("node-pty");
 const { spawn } = require("child_process");
 const { readConfig, resolveAgentCwd, resolveAgentCommand, resolveProjectChattr, resolveChattrSpawn, syncChattrToken, CONFIG_PATH } = require("./config");
 const routes = require("./routes");
+const { waitForAgentChattrReady, registerAgent } = require("./agentchattr-registry");
 
 const net = require("net");
 const config = readConfig();
@@ -252,8 +253,16 @@ async function buildAgentArgs(projectId, agentId) {
   if (mcpHttpPort) {
     const injectMode = agentCfg.mcp_inject || (cliBase === "codex" ? "proxy_flag" : cliBase === "gemini" ? "env" : "flag");
     if (injectMode === "flag") {
-      // Claude/Kimi: write config file, pass --mcp-config
-      const mcpConfigPath = writeMcpConfigFile(projectId, agentId, mcpHttpPort, token);
+      // Claude/Kimi: register with AgentChattr to obtain a per-agent
+      // token (#239 — session_token is browser auth, not MCP auth) and
+      // write that into the per-agent MCP config file.
+      const acServerPort = Number(new URL(project.agentchattr_url).port) || 8300;
+      await waitForAgentChattrReady(acServerPort);
+      const registration = await registerAgent(acServerPort, agentId, agentCfg.display_name || null);
+      if (!registration) {
+        throw new Error(`Failed to register ${agentId}: ${registerAgent.lastError}`);
+      }
+      const mcpConfigPath = writeMcpConfigFile(projectId, agentId, mcpHttpPort, registration.token);
       const flag = agentCfg.mcp_flag || "--mcp-config";
       args.push(flag, mcpConfigPath);
     } else if (injectMode === "proxy_flag") {
