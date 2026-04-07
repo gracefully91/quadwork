@@ -1349,27 +1349,38 @@ function cmdStart() {
     process.exit(1);
   }
 
-  // Start AgentChattr for each project that has a config.toml
+  // Start AgentChattr for each project from its own per-project clone.
+  // Phase 2E / #181: each project entry now has agentchattr_dir, set by
+  // the wizards in #184/#185. Resolve per-project so two projects with
+  // their own clones (and their own ports) can run side by side without
+  // sharing a single global install. Falls back to the legacy global
+  // install dir for v1 entries that have not been migrated yet (#188).
   const acPids = [];
-  const acDir = findAgentChattr(config.agentchattr_dir);
-  if (acDir) {
-    for (const project of config.projects) {
-      if (!project.working_dir) continue;
-      const configToml = path.join(project.working_dir, "agentchattr", "config.toml");
-      if (!fs.existsSync(configToml)) continue;
-      const acSpawn = chattrSpawnArgs(acDir, ["--config", configToml]);
-      if (!acSpawn) continue;
-      const acProc = spawn(acSpawn.command, acSpawn.spawnArgs, {
-        cwd: acSpawn.cwd,
-        stdio: "ignore",
-        detached: true,
-      });
-      acProc.on("error", () => {});
-      acProc.unref();
-      if (acProc.pid) {
-        ok(`AgentChattr started for ${project.id} (PID: ${acProc.pid})`);
-        acPids.push(acProc.pid);
-      }
+  const legacyAcDir = findAgentChattr(config.agentchattr_dir);
+  for (const project of config.projects) {
+    if (!project.working_dir) continue;
+    const projectAcDir = findAgentChattr(project.agentchattr_dir) || legacyAcDir;
+    if (!projectAcDir) continue;
+    // config.toml lives at the clone ROOT for new projects; legacy v1
+    // setups still keep it under <working_dir>/agentchattr/config.toml.
+    const perProjectToml = path.join(projectAcDir, "config.toml");
+    const legacyToml = path.join(project.working_dir, "agentchattr", "config.toml");
+    const configToml = fs.existsSync(perProjectToml)
+      ? perProjectToml
+      : (fs.existsSync(legacyToml) ? legacyToml : null);
+    if (!configToml) continue;
+    const acSpawn = chattrSpawnArgs(projectAcDir, ["--config", configToml]);
+    if (!acSpawn) continue;
+    const acProc = spawn(acSpawn.command, acSpawn.spawnArgs, {
+      cwd: acSpawn.cwd,
+      stdio: "ignore",
+      detached: true,
+    });
+    acProc.on("error", () => {});
+    acProc.unref();
+    if (acProc.pid) {
+      ok(`AgentChattr started for ${project.id} from ${projectAcDir} (PID: ${acProc.pid})`);
+      acPids.push(acProc.pid);
     }
   }
 
