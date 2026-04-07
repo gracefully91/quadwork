@@ -1324,6 +1324,94 @@ async function cmdInit() {
 
 // ─── Start Command ──────────────────────────────────────────────────────────
 
+/**
+ * Phase 3 / #181 sub-G: migrate legacy v1 projects to per-project clones.
+ *
+ * Runs eagerly at the top of cmdStart() so users see clear progress before
+ * any agents launch. For each project that doesn't yet have a working
+ * per-project clone:
+ *   1. Compute perProjectDir = ~/.quadwork/{project_id}/agentchattr
+ *   2. installAgentChattr(perProjectDir) — idempotent (#183 + #187)
+ *   3. Copy the existing legacy <working_dir>/agentchattr/config.toml into
+ *      the new clone ROOT if it exists. AgentChattr's run.py reads
+ *      ROOT/config.toml from the clone dir, so this is what makes the
+ *      project actually start from its own clone.
+ *   4. Set project.agentchattr_dir on the config entry and persist.
+ *
+ * Idempotent: if a project already has a working per-project clone with a
+ * config.toml at the ROOT and agentchattr_dir set, it is skipped silently.
+ * The legacy ~/.quadwork/agentchattr/ install is left alone — cleanup is
+ * sub-H (#189).
+ *
+ * The migration never touches worktrees, repo content, or token files;
+ * only the per-project AgentChattr install dir and config.json.
+ */
+function migrateLegacyProjects(config) {
+  if (!config.projects || config.projects.length === 0) return false;
+
+  const needsMigration = config.projects.filter((p) => {
+    if (!p.id) return false;
+    const target = p.agentchattr_dir || path.join(CONFIG_DIR, p.id, "agentchattr");
+    const hasClone = fs.existsSync(path.join(target, "run.py")) &&
+                     fs.existsSync(path.join(target, ".venv", "bin", "python"));
+    const hasToml = fs.existsSync(path.join(target, "config.toml"));
+    const hasField = !!p.agentchattr_dir;
+    return !(hasField && hasClone && hasToml);
+  });
+
+  if (needsMigration.length === 0) return false;
+
+  header("Migrating legacy projects to per-project AgentChattr clones");
+  let mutated = false;
+  for (const project of needsMigration) {
+    const perProjectDir = path.join(CONFIG_DIR, project.id, "agentchattr");
+    log(`  ${project.id} → ${perProjectDir}`);
+
+    // 1. Install (idempotent — no-op if clone is already valid).
+    if (!findAgentChattr(perProjectDir)) {
+      const acSpinner = spinner(`    Cloning AgentChattr for ${project.id}...`);
+      const installResult = installAgentChattr(perProjectDir);
+      if (!installResult) {
+        acSpinner.stop(false);
+        const reason = installAgentChattr.lastError || "unknown error";
+        warn(`    Migration failed for ${project.id}: ${reason}`);
+        warn(`    ${project.id} will keep using the legacy global install until this is resolved.`);
+        continue;
+      }
+      acSpinner.stop(true);
+    }
+
+    // 2. Seed config.toml at the clone ROOT from the legacy in-worktree
+    //    location if present. Do not overwrite an existing per-project
+    //    config.toml — re-running the migration must be a no-op.
+    const targetToml = path.join(perProjectDir, "config.toml");
+    if (!fs.existsSync(targetToml) && project.working_dir) {
+      const legacyToml = path.join(project.working_dir, "agentchattr", "config.toml");
+      if (fs.existsSync(legacyToml)) {
+        try {
+          fs.copyFileSync(legacyToml, targetToml);
+          log(`    Copied legacy config.toml → ${targetToml}`);
+        } catch (e) {
+          warn(`    Could not copy ${legacyToml}: ${e.message}`);
+        }
+      }
+    }
+
+    // 3. Persist agentchattr_dir on the project entry.
+    if (project.agentchattr_dir !== perProjectDir) {
+      project.agentchattr_dir = perProjectDir;
+      mutated = true;
+    }
+  }
+
+  if (mutated) {
+    try { writeConfig(config); ok("Updated config.json with per-project agentchattr_dir entries"); }
+    catch (e) { warn(`Failed to write config.json: ${e.message}`); }
+  }
+  log("  Legacy ~/.quadwork/agentchattr/ left in place; remove via cleanup script (#189).");
+  return true;
+}
+
 function cmdStart() {
   console.log("\n  QuadWork Start\n");
 
@@ -1331,6 +1419,11 @@ function cmdStart() {
   if (config.projects.length === 0) {
     warn("No projects configured yet. Create one at the setup page.");
   }
+
+  // Phase 3 / #181: migrate legacy single-install projects to their
+  // own per-project clones before any AgentChattr spawn happens.
+  // Idempotent — a no-op once every project already has a working clone.
+  migrateLegacyProjects(config);
 
   const quadworkDir = path.join(__dirname, "..");
   const port = config.port || 8400;
