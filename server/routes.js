@@ -554,16 +554,35 @@ router.get("/api/github/prs", (req, res) => {
 // "Recently closed" / "Recently merged" sub-sections under each
 // list in GitHubPanel. Limit 5 items each, ordered by closedAt
 // descending so the freshest activity sits at the top.
+// gh CLI's default ordering for `issue list --state closed` and
+// `pr list --state merged` is createdAt-desc, not closedAt/mergedAt-desc,
+// so a stale-but-recently-closed item can sit below a fresh-but-
+// older one. We pull a wider window and re-sort by close/merge time
+// before truncating to 5 to honor #281's "newest first" requirement.
+const RECENT_FETCH_LIMIT = 20;
+const RECENT_DISPLAY_LIMIT = 5;
+
 router.get("/api/github/closed-issues", (req, res) => {
   const repo = getRepo(req.query.project || "");
   if (!repo) return res.status(400).json({ error: "No repo configured for project" });
   try {
     const out = execFileSync(
       "gh",
-      ["issue", "list", "-R", repo, "--state", "closed", "--json", "number,title,state,url,closedAt", "--limit", "5"],
+      ["issue", "list", "-R", repo, "--state", "closed", "--json", "number,title,state,url,closedAt", "--limit", String(RECENT_FETCH_LIMIT)],
       { encoding: "utf-8", timeout: 15000 },
     );
-    res.json(JSON.parse(out));
+    const items = JSON.parse(out);
+    const sorted = Array.isArray(items)
+      ? items
+          .slice()
+          .sort((a, b) => {
+            const ta = a && a.closedAt ? Date.parse(a.closedAt) : 0;
+            const tb = b && b.closedAt ? Date.parse(b.closedAt) : 0;
+            return tb - ta;
+          })
+          .slice(0, RECENT_DISPLAY_LIMIT)
+      : items;
+    res.json(sorted);
   } catch (err) {
     res.status(502).json({ error: "gh issue list (closed) failed", detail: err.message });
   }
@@ -575,13 +594,25 @@ router.get("/api/github/merged-prs", (req, res) => {
   try {
     // gh pr list with `--state merged` filters server-side so we
     // don't have to pull every closed PR and discard the un-merged
-    // ones (closed-without-merge).
+    // ones (closed-without-merge). Same fetch-wider-then-sort
+    // strategy as closed-issues so the newest merge always wins.
     const out = execFileSync(
       "gh",
-      ["pr", "list", "-R", repo, "--state", "merged", "--json", "number,title,state,url,mergedAt,author", "--limit", "5"],
+      ["pr", "list", "-R", repo, "--state", "merged", "--json", "number,title,state,url,mergedAt,author", "--limit", String(RECENT_FETCH_LIMIT)],
       { encoding: "utf-8", timeout: 15000 },
     );
-    res.json(JSON.parse(out));
+    const items = JSON.parse(out);
+    const sorted = Array.isArray(items)
+      ? items
+          .slice()
+          .sort((a, b) => {
+            const ta = a && a.mergedAt ? Date.parse(a.mergedAt) : 0;
+            const tb = b && b.mergedAt ? Date.parse(b.mergedAt) : 0;
+            return tb - ta;
+          })
+          .slice(0, RECENT_DISPLAY_LIMIT)
+      : items;
+    res.json(sorted);
   } catch (err) {
     res.status(502).json({ error: "gh pr list (merged) failed", detail: err.message });
   }
