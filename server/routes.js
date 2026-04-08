@@ -922,6 +922,44 @@ router.post("/api/setup", (req, res) => {
       // ~/.quadwork/{id}/OVERNIGHT-QUEUE.md.
       writeOvernightQueueFileSafe(id, name || id, repo);
 
+      // Batch 28 / #392 / quadwork#252: auto-spawn the per-project
+      // AgentChattr process. The CLI wizard's writeAgentChattrConfig
+      // does this; the web wizard previously left the install dormant
+      // until the user clicked Restart, so MCP fell through to a stale
+      // instance on port 8300. Mirror the loopback-restart pattern
+      // already used by the agentchattr-config branch above. Failures
+      // are non-fatal — the dashboard's Restart button is still
+      // available, and per the issue add-config must still return ok.
+      try {
+        const qwPort = cfg.port || 8400;
+        fetch(
+          `http://127.0.0.1:${qwPort}/api/agentchattr/${encodeURIComponent(id)}/restart`,
+          { method: "POST" },
+        )
+          .then(async (r) => {
+            // /restart reports spawn failures (e.g. port collision —
+            // server/index.js:650-668) as HTTP 500, so a resolved
+            // fetch is not the same thing as a successful spawn. Log
+            // non-2xx responses with status and body so the operator
+            // can see why the auto-spawn silently didn't take.
+            if (!r.ok) {
+              let detail = "";
+              try { detail = (await r.text()).slice(0, 500); } catch {}
+              console.warn(
+                `[setup] auto-spawn AgentChattr for ${id} returned HTTP ${r.status}: ${detail}`,
+              );
+            }
+          })
+          .catch((err) => {
+            console.warn(
+              `[setup] auto-spawn AgentChattr for ${id} failed:`,
+              err.message || err,
+            );
+          });
+      } catch (err) {
+        console.warn(`[setup] auto-spawn AgentChattr for ${id} skipped:`, err.message || err);
+      }
+
       return res.json({ ok: true });
     }
     default:
