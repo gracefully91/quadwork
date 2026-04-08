@@ -10,17 +10,34 @@ interface TerminalPanelProps {
   agentId: string;
   /** WebSocket server base URL */
   wsUrl?: string;
+  /**
+   * #399 / quadwork#264: fired whenever PTY output arrives over the
+   * WebSocket. TerminalGrid uses this to derive a "currently active"
+   * signal for the activity ring on each agent's status dot — running
+   * but idle agents must show a static dot, not a constantly-pulsing
+   * one. Kept as a fire-and-forget callback so it can't slow rendering
+   * inside the xterm write path.
+   */
+  onActivity?: () => void;
 }
 
 export default function TerminalPanel({
   projectId,
   agentId,
   wsUrl,
+  onActivity,
 }: TerminalPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  // Stash onActivity in a ref so the hot ws.onmessage path can call
+  // the latest callback without becoming an effect dep — otherwise an
+  // inline arrow from the parent (re-created on every render via the
+  // 500ms activityTick) would tear down and reopen the PTY ws every
+  // tick, losing scrollback and starving the activity signal itself.
+  const onActivityRef = useRef(onActivity);
+  useEffect(() => { onActivityRef.current = onActivity; }, [onActivity]);
 
   const fit = useCallback(() => {
     if (fitRef.current && termRef.current && containerRef.current) {
@@ -141,6 +158,8 @@ export default function TerminalPanel({
 
       ws.onmessage = (e) => {
         term.write(e.data);
+        const cb = onActivityRef.current;
+        if (cb) cb();
       };
 
       ws.onclose = (e) => {

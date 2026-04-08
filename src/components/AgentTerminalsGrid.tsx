@@ -42,7 +42,11 @@ export default function AgentTerminalsGrid({ projectId, agentStates, onStatusCha
         <div className="flex items-center gap-1.5">
           <span className="text-[11px] text-text-muted uppercase tracking-wider">Agent Terminals</span>
           <div
-            className="relative"
+            // #399 / quadwork#264: inline-flex+items-center so the
+            // (?) button vertically centers with the title text. The
+            // previous block-level wrapper let the button drop to its
+            // own baseline below the title cap-height.
+            className="relative inline-flex items-center"
             onMouseEnter={() => setTipOpen(true)}
             onMouseLeave={() => setTipOpen(false)}
             onFocus={() => setTipOpen(true)}
@@ -51,7 +55,7 @@ export default function AgentTerminalsGrid({ projectId, agentStates, onStatusCha
             <button
               type="button"
               aria-label="About agent terminals"
-              className="w-3.5 h-3.5 rounded-full border border-border text-[9px] text-text-muted hover:text-accent hover:border-accent inline-flex items-center justify-center"
+              className="w-3.5 h-3.5 rounded-full border border-border text-[9px] leading-none text-text-muted hover:text-accent hover:border-accent inline-flex items-center justify-center"
             >?</button>
             {tipOpen && (
               <div

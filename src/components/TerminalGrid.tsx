@@ -1,7 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import TerminalPanel from "./TerminalPanel";
+
+// #399 / quadwork#264: how long an agent stays "active" after its
+// last PTY output before the activity ring stops pulsing.
+const ACTIVITY_WINDOW_MS = 2000;
 
 interface Agent {
   id: string;
@@ -45,6 +49,33 @@ export default function TerminalGrid({
   const [expanded, setExpanded] = useState<string | null>(null);
   const gridClasses = agents.length >= 4 ? GRID_CLASSES_4 : GRID_CLASSES_3;
 
+  // #399 / quadwork#264: derive a "currently active" signal from the
+  // PTY ws stream so the ring only pulses while the agent is actually
+  // working. The ring previously fired whenever the session was
+  // running, which meant idle live agents had a constantly-spinning
+  // ring indistinguishable from a busy one.
+  //
+  // We store the last-activity timestamp per agent in a ref (so the
+  // hot ws.onmessage path doesn't trigger a render storm) and tick a
+  // small piece of state every 500ms to re-evaluate freshness. This
+  // keeps the render budget bounded regardless of PTY chatter.
+  const lastActivityRef = useRef<Record<string, number>>({});
+  const [activityTick, setActivityTick] = useState(0);
+  const markActivity = useCallback((agentId: string) => {
+    lastActivityRef.current[agentId] = Date.now();
+  }, []);
+  useEffect(() => {
+    const interval = setInterval(() => setActivityTick((t) => t + 1), 500);
+    return () => clearInterval(interval);
+  }, []);
+  const isActive = (agentId: string) => {
+    const ts = lastActivityRef.current[agentId];
+    return ts !== undefined && Date.now() - ts < ACTIVITY_WINDOW_MS;
+  };
+  // Reference activityTick so the linter doesn't strip the dep that
+  // forces a re-render on each tick.
+  void activityTick;
+
   return (
     <div className="w-full h-full relative grid grid-rows-2 grid-cols-2">
       {agents.map((agent, i) => {
@@ -75,7 +106,7 @@ export default function TerminalGrid({
                     signals "agent is working". Idle/stopped/error
                     states omit the ring. */}
                 <span className="relative inline-flex items-center justify-center w-2 h-2">
-                  {agentStates[agent.id] === "running" && (
+                  {agentStates[agent.id] === "running" && isActive(agent.id) && (
                     <span className="absolute inline-flex h-full w-full rounded-full bg-accent opacity-60 animate-ping" />
                   )}
                   <span className={`relative w-1.5 h-1.5 rounded-full ${
@@ -147,7 +178,11 @@ export default function TerminalGrid({
               </div>
             </div>
             <div className="flex-1 min-h-0">
-              <TerminalPanel projectId={projectId} agentId={agent.id} />
+              <TerminalPanel
+                projectId={projectId}
+                agentId={agent.id}
+                onActivity={() => markActivity(agent.id)}
+              />
             </div>
           </div>
         );
