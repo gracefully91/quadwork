@@ -1,6 +1,16 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import {
+  NOTIFICATION_SOUND_OPTIONS,
+  type NotificationSoundChoice,
+  getNotificationEnabled,
+  setNotificationEnabled,
+  getNotificationChoice,
+  setNotificationChoice,
+  getNotificationBackgroundOnly,
+  setNotificationBackgroundOnly,
+} from "../lib/notificationSound";
 
 // ─── Server Controls ─────────────────────────────────────────────────────────
 
@@ -117,17 +127,6 @@ function ServerSection({ projectId }: { projectId: string }) {
     </div>
   );
 }
-
-import {
-  NOTIFICATION_SOUND_OPTIONS,
-  type NotificationSoundChoice,
-  getNotificationEnabled,
-  setNotificationEnabled,
-  getNotificationChoice,
-  setNotificationChoice,
-  getNotificationBackgroundOnly,
-  setNotificationBackgroundOnly,
-} from "../lib/notificationSound";
 
 // ─── System (Caffeinate) ─────────────────────────────────────────────────────
 
