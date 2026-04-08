@@ -168,6 +168,22 @@ function ChatPanelAPI({ projectId }: { projectId?: string }) {
   // #397 / quadwork#262: tracks the message the next send will be a
   // threaded reply to. Cleared after a successful send or on cancel.
   const [replyTo, setReplyTo] = useState<{ id: number; sender: string } | null>(null);
+  // #409 / quadwork#273 + #405 / quadwork#278: track the operator's
+  // configured display name so the notification-sound filter
+  // suppresses self-messages even when the operator renamed
+  // themselves (e.g. operator_name = "alice"). Held in a ref so the
+  // hot poll path doesn't need a dep on the state value.
+  const operatorNameRef = useRef<string>("user");
+  useEffect(() => {
+    fetch("/api/config")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((cfg) => {
+        if (cfg && typeof cfg.operator_name === "string" && cfg.operator_name) {
+          operatorNameRef.current = cfg.operator_name;
+        }
+      })
+      .catch(() => {});
+  }, []);
   const cursorRef = useRef(0);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -205,6 +221,7 @@ function ChatPanelAPI({ projectId }: { projectId?: string }) {
           // setMessages updater) so React strict mode's double-invoke
           // can't double-fire the audio.
           const previousCursor = cursorRef.current;
+          const opName = operatorNameRef.current;
           const newAgentMessage =
             previousCursor > 0 &&
             msgs.some(
@@ -212,6 +229,7 @@ function ChatPanelAPI({ projectId }: { projectId?: string }) {
                 m.id > previousCursor &&
                 (m.type === undefined || m.type === "chat") &&
                 m.sender !== "user" &&
+                m.sender !== opName &&
                 m.sender !== "system",
             );
           setMessages((prev) => {
