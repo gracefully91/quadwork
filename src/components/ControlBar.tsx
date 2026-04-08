@@ -1,6 +1,16 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import {
+  NOTIFICATION_SOUND_OPTIONS,
+  type NotificationSoundChoice,
+  getNotificationEnabled,
+  setNotificationEnabled,
+  getNotificationChoice,
+  setNotificationChoice,
+  getNotificationBackgroundOnly,
+  setNotificationBackgroundOnly,
+} from "../lib/notificationSound";
 
 // ─── Server Controls ─────────────────────────────────────────────────────────
 
@@ -150,6 +160,38 @@ function SystemSection() {
   const [hoursDraft, setHoursDraft] = useState<string>(String(KEEP_AWAKE_HOURS_DEFAULT));
   const [untilStopped, setUntilStopped] = useState<boolean>(false);
   const [showHelp, setShowHelp] = useState(false);
+  // #409 / quadwork#273: notification sound prefs. Hydrated from
+  // localStorage on first render so the toggle/dropdown reflect the
+  // value the chat panel is reading.
+  const [soundEnabled, setSoundEnabledState] = useState<boolean>(true);
+  const [soundChoice, setSoundChoiceState] = useState<NotificationSoundChoice>("soft-chime");
+  const [soundBgOnly, setSoundBgOnlyState] = useState<boolean>(true);
+  useEffect(() => {
+    setSoundEnabledState(getNotificationEnabled());
+    setSoundChoiceState(getNotificationChoice());
+    setSoundBgOnlyState(getNotificationBackgroundOnly());
+  }, []);
+  const toggleSound = () => {
+    const next = !soundEnabled;
+    setSoundEnabledState(next);
+    setNotificationEnabled(next);
+  };
+  const updateChoice = (v: NotificationSoundChoice) => {
+    setSoundChoiceState(v);
+    setNotificationChoice(v);
+    // Quick preview so the operator hears what they picked.
+    if (soundEnabled) {
+      try {
+        const audio = new Audio(`/sounds/${v}.mp3`);
+        audio.volume = 0.6;
+        void audio.play().catch(() => {});
+      } catch {}
+    }
+  };
+  const toggleBgOnly = (v: boolean) => {
+    setSoundBgOnlyState(v);
+    setNotificationBackgroundOnly(v);
+  };
 
   const poll = useCallback(() => {
     fetch("/api/caffeinate/status")
@@ -195,14 +237,16 @@ function SystemSection() {
       .catch(() => {});
   };
 
-  if (platform && platform !== "darwin") return null;
+  // Don't return null on non-darwin: notification sound controls
+  // still apply, just hide the Keep Awake button.
 
   return (
     <div className="flex flex-col gap-1 relative">
       <div className="text-[10px] text-text-muted uppercase tracking-wider font-semibold">
         System
       </div>
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {(!platform || platform === "darwin") && (
         <button
           onClick={() => (active ? stop() : setShowPresets(!showPresets))}
           className={`px-1.5 py-0.5 text-[10px] border transition-colors ${
@@ -219,7 +263,43 @@ function SystemSection() {
             <span className="ml-1 text-accent/70">on</span>
           )}
         </button>
+        )}
+        {/* #409 / quadwork#273: notification sound controls. */}
+        <button
+          type="button"
+          onClick={toggleSound}
+          title={soundEnabled ? "Notification sound on (click to mute)" : "Notification sound off (click to unmute)"}
+          className={`px-1.5 py-0.5 text-[10px] border transition-colors ${
+            soundEnabled
+              ? "border-accent/50 text-accent bg-accent/10 hover:bg-accent/20"
+              : "border-border text-text-muted hover:text-text hover:border-accent"
+          }`}
+        >
+          {soundEnabled ? "🔔" : "🔕"} Sound
+        </button>
+        {soundEnabled && (
+          <select
+            value={soundChoice}
+            onChange={(e) => updateChoice(e.target.value as NotificationSoundChoice)}
+            title="Notification sound"
+            className="bg-transparent border border-border px-1 py-0.5 text-[10px] text-text outline-none focus:border-accent cursor-pointer"
+          >
+            {NOTIFICATION_SOUND_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value} className="bg-bg-surface">{o.label}</option>
+            ))}
+          </select>
+        )}
       </div>
+      {soundEnabled && (
+        <label className="flex items-center gap-1 text-[10px] text-text-muted cursor-pointer select-none mt-0.5">
+          <input
+            type="checkbox"
+            checked={soundBgOnly}
+            onChange={(e) => toggleBgOnly(e.target.checked)}
+          />
+          Only when tab is in background
+        </label>
+      )}
 
       {showPresets && !active && (
         <div className="absolute bottom-full left-0 mb-1 p-2 border border-border bg-bg-surface z-20 min-w-[220px] flex flex-col gap-1.5">
