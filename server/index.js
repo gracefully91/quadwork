@@ -983,19 +983,24 @@ ALL: Communicate via this chat by tagging agents. Your terminal is NOT visible.`
 async function sendTriggerMessage(projectId) {
   const cfg = readConfig();
   const project = cfg.projects && cfg.projects.find((p) => p.id === projectId);
-  const { url: chattrUrl, token: chattrToken } = resolveProjectChattr(projectId);
-  const token = chattrToken || "";
   const message = (project && project.trigger_message) || DEFAULT_MESSAGE;
-  const headers = { "Content-Type": "application/json" };
-  if (token) headers["x-session-token"] = token;
+
+  // #401 / quadwork#277: route trigger sends through the local
+  // /api/chat path that already works for the chat panel. The old
+  // direct /api/send call required a registration token (not the
+  // session token we have on hand) and 401'd silently — agents never
+  // saw the queue-check pulse. /api/chat opens the AC ws with the
+  // session token and inherits the #230 token-resync-on-401 retry,
+  // so the trigger now gets the same proven path as the chat panel.
+  const qwPort = cfg.port || 8400;
+  const url = `http://127.0.0.1:${qwPort}/api/chat?project=${encodeURIComponent(projectId)}`;
 
   const info = triggers.get(projectId);
   try {
-    let tokenParam = token ? `?token=${encodeURIComponent(token)}` : "";
-    const res = await fetch(`${chattrUrl}/api/send${tokenParam}`, {
+    const res = await fetch(url, {
       method: "POST",
-      headers,
-      body: JSON.stringify({ text: message, channel: "general", sender: "user" }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: message, channel: "general" }),
     });
     if (!res.ok) {
       const err = await res.text().catch(() => "");
