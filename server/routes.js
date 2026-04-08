@@ -791,11 +791,32 @@ function parseActiveBatch(queueText) {
   const section = m[0];
   const batchMatch = section.match(/\*\*Batch:\*\*\s*(\d+)/i) || section.match(/Batch:\s*(\d+)/i);
   const batchNumber = batchMatch ? parseInt(batchMatch[1], 10) : null;
-  // Collect every `#NNN` token in the section. dedup + preserve order.
+  // Only collect issue numbers from lines that look like list-item
+  // entries — i.e. lines whose first content token is either `#N`
+  // or `[#N]` after an optional list marker. This rejects prose
+  // like "Tracking umbrella: #293", "next after #294 merged", and
+  // similar dependency / commentary references that t2a flagged on
+  // realproject7/dropcast's queue.
+  //
+  // Accepted line shapes:
+  //   - #295 sub-A heartbeat
+  //   * #295 sub-A heartbeat
+  //   1. #295 sub-A heartbeat
+  //   #295 sub-A heartbeat
+  //   - [#295] sub-A heartbeat
+  //   [#295] sub-A heartbeat
+  //
+  // Rejected:
+  //   Tracking umbrella: #293
+  //   Assigned next after #294 merged.
+  //   See #295 for context.
+  const ITEM_LINE_RE = /^\s*(?:[-*]\s+|\d+\.\s+)?\[?#(\d{1,6})\]?\b/;
   const seen = new Set();
   const issueNumbers = [];
-  for (const num of section.matchAll(/#(\d{1,6})\b/g)) {
-    const n = parseInt(num[1], 10);
+  for (const line of section.split("\n")) {
+    const lineMatch = line.match(ITEM_LINE_RE);
+    if (!lineMatch) continue;
+    const n = parseInt(lineMatch[1], 10);
     if (!seen.has(n)) {
       seen.add(n);
       issueNumbers.push(n);
