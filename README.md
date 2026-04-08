@@ -35,7 +35,7 @@ on each other — code, review, ship — autonomously, with safety rails.
 
 - 🤖 **Runs 24/7** — agents keep working overnight while you rest
 - 🛡️ **Always reviewed** — every PR needs **2 independent approvals** before merge
-- 🔒 **Local-first** — runs entirely on your machine; no chat or code ever leaves it
+- 🔒 **Local-first** — the dashboard, terminals, chat server, and PTY sessions all run on your machine. The agents still make outbound calls to the LLM APIs you've configured (Claude / Codex / Gemini) and to GitHub, and the optional Telegram bridge mirrors chat to your phone. QuadWork itself doesn't host or proxy any of that traffic through a third party
 
 ## Who is QuadWork for?
 
