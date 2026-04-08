@@ -105,19 +105,45 @@ async function deregisterAgent(serverPort, name, token) {
  * QuadWork agent silently disappears from the channel one minute after
  * registration.
  *
- * Returns an opaque handle suitable for stopHeartbeat. Transient errors
- * (network blips, AgentChattr restart) are swallowed — the next tick
- * just tries again. The 409 "identity wiped" recovery flow is sub-D
- * (quadwork#253) and is intentionally not handled here.
+ * `getName` and `getToken` are read on every tick (either as plain
+ * values or as zero-arg functions) so the sub-D 409 recovery path can
+ * swap them in place after re-registration without restarting the
+ * interval. Pass an `onConflict` callback to handle 409 responses
+ * (AgentChattr restart wiped the in-memory registry — re-register and
+ * the next tick will use the new credentials). Other errors are
+ * swallowed.
  *
- * Reference: /Users/cho/Projects/agentchattr/wrapper.py lines 715-748.
+ * Returns an opaque handle suitable for stopHeartbeat.
+ *
+ * Reference: /Users/cho/Projects/agentchattr/wrapper.py lines 715-744.
  */
-function startHeartbeat(serverPort, name, token, intervalMs = 5000) {
-  const url = `http://127.0.0.1:${serverPort}/api/heartbeat/${encodeURIComponent(name)}`;
-  const headers = { Authorization: `Bearer ${token}` };
+function startHeartbeat(serverPort, getName, getToken, { onConflict, intervalMs = 5000 } = {}) {
+  // Sub-D guard: avoid re-entering onConflict while a previous recovery
+  // attempt is still in flight. Without this, a slow re-register would
+  // be triggered once per 5s tick and stack up duplicate registrations.
+  let recovering = false;
+  const resolve = (v) => (typeof v === "function" ? v() : v);
   const tick = async () => {
+    const name = resolve(getName);
+    const token = resolve(getToken);
+    if (!name) return;
+    const url = `http://127.0.0.1:${serverPort}/api/heartbeat/${encodeURIComponent(name)}`;
     try {
-      await fetchWithTimeout(url, { method: "POST", headers }, DEFAULT_TIMEOUT_MS);
+      const r = await fetchWithTimeout(
+        url,
+        { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {} },
+        DEFAULT_TIMEOUT_MS,
+      );
+      if (r.status === 409 && typeof onConflict === "function" && !recovering) {
+        recovering = true;
+        try {
+          await onConflict();
+        } catch {
+          // recovery is best-effort; next tick retries on its own
+        } finally {
+          recovering = false;
+        }
+      }
     } catch {
       // swallow — next tick will retry
     }
