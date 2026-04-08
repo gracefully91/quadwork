@@ -282,8 +282,19 @@ function ChatPanelAPI({ projectId }: { projectId?: string }) {
               type="button"
               onClick={() => {
                 setReplyTo({ id: msg.id, sender: msg.sender });
-                const prefix = `@${msg.sender} `;
-                setInput((prev) => (prev.startsWith(prefix) ? prev : prefix));
+                // Only prefill `@<sender>` when the sender is a real
+                // agent. Non-agent rows (user, system, …) would
+                // produce broken mentions that send() then
+                // double-routes through its auto-@head fallback,
+                // turning a reply-to-user into "@head @user …".
+                // For those rows we still set replyTo so the threaded
+                // link works in AC's native UI; we just don't poison
+                // the input with a mention that isn't routable.
+                const KNOWN_AGENTS = new Set(["head", "dev", "reviewer1", "reviewer2"]);
+                if (KNOWN_AGENTS.has(msg.sender.toLowerCase())) {
+                  const prefix = `@${msg.sender} `;
+                  setInput((prev) => (prev.startsWith(prefix) ? prev : prefix));
+                }
                 inputRef.current?.focus();
               }}
               className="shrink-0 self-start opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-[10px] text-text-muted hover:text-text px-1 py-0.5 border border-border/50 rounded"
