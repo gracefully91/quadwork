@@ -429,7 +429,7 @@ router.post("/api/project-history", async (req, res) => {
   // before POSTing when the IDs differ; if it didn't (e.g. curl),
   // require an explicit override flag so we can't silently merge
   // foreign chat into the wrong project.
-  if (body.project_id && body.project_id !== projectId && !body.allow_project_mismatch) {
+  if (body.project_id && body.project_id !== projectId && body.allow_project_mismatch !== true) {
     return res.status(409).json({
       error: `Project mismatch: file is from '${body.project_id}', target is '${projectId}'. Resend with allow_project_mismatch=true to override.`,
     });
@@ -440,7 +440,7 @@ router.post("/api/project-history", async (req, res) => {
   // identity, reject the entire import unless the operator opted
   // in via allow_agent_senders=true. Default-safe so a leaked or
   // crafted export file can't post as Head from the dashboard.
-  if (!body.allow_agent_senders) {
+  if (body.allow_agent_senders !== true) {
     const offenders = new Set();
     for (const m of body.messages) {
       if (m && typeof m === "object" && typeof m.sender === "string") {
@@ -466,7 +466,7 @@ router.post("/api/project-history", async (req, res) => {
   const cfg = readConfigFile();
   const project = cfg.projects?.find((p) => p.id === projectId);
   const incomingExportedAt = typeof body.exported_at === "string" ? body.exported_at : null;
-  if (!body.allow_duplicate && project && incomingExportedAt) {
+  if (body.allow_duplicate !== true && project && incomingExportedAt) {
     if (project.history_last_imported_at === incomingExportedAt) {
       return res.status(409).json({
         error: `This export was already imported (exported_at=${incomingExportedAt}). Resend with allow_duplicate=true to import again.`,
