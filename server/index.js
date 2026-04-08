@@ -9,6 +9,7 @@ const { spawn } = require("child_process");
 const { readConfig, resolveAgentCwd, resolveAgentCommand, resolveProjectChattr, resolveChattrSpawn, syncChattrToken, CONFIG_PATH } = require("./config");
 const routes = require("./routes");
 const { waitForAgentChattrReady, registerAgent, deregisterAgent, startHeartbeat, stopHeartbeat } = require("./agentchattr-registry");
+const { startQueueWatcher, stopQueueWatcher } = require("./queue-watcher");
 
 const net = require("net");
 const config = readConfig();
@@ -418,6 +419,7 @@ async function spawnAgentPty(project, agent) {
       acServerPort: built.acServerPort,
       acRegistrationToken: built.acRegistrationToken,
       acHeartbeatHandle: null,
+      queueWatcherHandle: null,
     };
     agentSessions.set(key, session);
 
@@ -431,6 +433,27 @@ async function spawnAgentPty(project, agent) {
         session.acRegistrationName,
         session.acRegistrationToken,
       );
+    }
+
+    // #393 / quadwork#251: queue watcher — the actual mechanism by
+    // which agents pick up chat. Without this an agent can be
+    // registered + heartbeating yet still never respond, because
+    // AgentChattr only writes to {data_dir}/{name}_queue.jsonl and
+    // expects the agent side to poll + inject `mcp read`.
+    if (session.acRegistrationName && session.term) {
+      try {
+        const { dir: acDir } = resolveProjectChattr(project);
+        if (acDir) {
+          const dataDir = path.join(acDir, "data");
+          session.queueWatcherHandle = startQueueWatcher(
+            dataDir,
+            session.acRegistrationName,
+            session.term,
+          );
+        }
+      } catch {
+        // best-effort — failure here just means no chat injection
+      }
     }
 
     term.onExit(({ exitCode }) => {
@@ -452,6 +475,10 @@ async function spawnAgentPty(project, agent) {
         if (current.acHeartbeatHandle) {
           stopHeartbeat(current.acHeartbeatHandle);
           current.acHeartbeatHandle = null;
+        }
+        if (current.queueWatcherHandle) {
+          stopQueueWatcher(current.queueWatcherHandle);
+          current.queueWatcherHandle = null;
         }
         if (current.acRegistrationName && current.acServerPort) {
           deregisterAgent(current.acServerPort, current.acRegistrationName).catch(() => {});
@@ -496,6 +523,12 @@ async function stopAgentSession(key) {
   if (session.acHeartbeatHandle) {
     stopHeartbeat(session.acHeartbeatHandle);
     session.acHeartbeatHandle = null;
+  }
+  // Stop queue watcher (#393 / quadwork#251) — the PTY is gone,
+  // injecting into a dead term would throw on the next tick.
+  if (session.queueWatcherHandle) {
+    stopQueueWatcher(session.queueWatcherHandle);
+    session.queueWatcherHandle = null;
   }
   // Best-effort deregister from AgentChattr (#241) so the slot frees
   // and the next register lands at slot 1 instead of head-2.
