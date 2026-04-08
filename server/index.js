@@ -444,6 +444,23 @@ async function spawnAgentPty(project, agent) {
           current.ws.close(1000, `exited:${exitCode}`);
         }
         current.ws = null;
+        // #391 / quadwork#250: a crashed PTY must also clear its
+        // heartbeat interval (otherwise it leaks and a later /start
+        // double-registers) and free the AgentChattr slot (otherwise
+        // the agent stays falsely `active` forever and the next
+        // register lands at slot 2). Deregister is best-effort.
+        if (current.acHeartbeatHandle) {
+          stopHeartbeat(current.acHeartbeatHandle);
+          current.acHeartbeatHandle = null;
+        }
+        if (current.acRegistrationName && current.acServerPort) {
+          deregisterAgent(current.acServerPort, current.acRegistrationName).catch(() => {});
+          if (current.projectId && current.agentId) {
+            try { clearPersistedAgentToken(current.projectId, current.agentId); } catch {}
+          }
+          current.acRegistrationName = null;
+          current.acRegistrationToken = null;
+        }
       }
     });
 
