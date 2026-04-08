@@ -120,12 +120,17 @@ function ServerSection({ projectId }: { projectId: string }) {
 
 // ─── System (Caffeinate) ─────────────────────────────────────────────────────
 
-const PRESETS = [
-  { label: "2 hours", seconds: 7200 },
-  { label: "4 hours", seconds: 14400 },
-  { label: "8 hours", seconds: 28800 },
-  { label: "Until stopped", seconds: 0 },
-];
+// #407 / quadwork#270: free-typed hours input replaces the fixed
+// preset list. Same default/min/max/step pattern as the Scheduled
+// Trigger custom-hours fix in #406. The "Until stopped" option is
+// preserved here (issue requires it) as a separate checkbox.
+const KEEP_AWAKE_HOURS_DEFAULT = 3;
+const KEEP_AWAKE_HOURS_MIN = 0.1;
+const KEEP_AWAKE_HOURS_MAX = 24;
+function clampKeepAwakeHours(h: number): number {
+  if (!Number.isFinite(h)) return KEEP_AWAKE_HOURS_DEFAULT;
+  return Math.min(Math.max(h, KEEP_AWAKE_HOURS_MIN), KEEP_AWAKE_HOURS_MAX);
+}
 
 function formatTime(seconds: number): string {
   const h = Math.floor(seconds / 3600);
@@ -139,6 +144,12 @@ function SystemSection() {
   const [remaining, setRemaining] = useState<number | null>(null);
   const [platform, setPlatform] = useState<string>("");
   const [showPresets, setShowPresets] = useState(false);
+  // #407 / quadwork#270: free-typed hours draft + "Until stopped"
+  // override. Same draft-string pattern as #406 so decimals stay
+  // typeable.
+  const [hoursDraft, setHoursDraft] = useState<string>(String(KEEP_AWAKE_HOURS_DEFAULT));
+  const [untilStopped, setUntilStopped] = useState<boolean>(false);
+  const [showHelp, setShowHelp] = useState(false);
 
   const poll = useCallback(() => {
     fetch("/api/caffeinate/status")
@@ -211,19 +222,68 @@ function SystemSection() {
       </div>
 
       {showPresets && !active && (
-        <div className="absolute bottom-full left-0 mb-1 border border-border bg-bg-surface z-20 min-w-[140px]">
-          <p className="px-2 py-1 text-[10px] text-[#ffcc00] border-b border-border">
+        <div className="absolute bottom-full left-0 mb-1 p-2 border border-border bg-bg-surface z-20 min-w-[220px] flex flex-col gap-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-text-muted uppercase tracking-wider">Keep Awake</span>
+            <button
+              type="button"
+              aria-label="About Keep Awake"
+              onClick={() => setShowHelp((s) => !s)}
+              className="w-3.5 h-3.5 rounded-full border border-border text-[9px] leading-none text-text-muted hover:text-accent hover:border-accent inline-flex items-center justify-center"
+            >?</button>
+          </div>
+          {showHelp && (
+            <div className="p-1.5 text-[10px] leading-snug text-text bg-bg border border-border/60 rounded">
+              <b>Keep Awake</b> prevents your Mac from sleeping for the duration you set. Use this when you want agents to keep working overnight.
+              <br /><br />
+              Under the hood, this runs macOS&apos;s <code>caffeinate</code> command. While it&apos;s active your screen, disk, and system idle timers are all paused — make sure your Mac is <b>plugged in</b> to avoid draining the battery.
+            </div>
+          )}
+          <p className="text-[10px] text-[#ffcc00]">
             Make sure Mac is plugged in
           </p>
-          {PRESETS.map((p) => (
-            <button
-              key={p.label}
-              onClick={() => start(p.seconds)}
-              className="w-full text-left px-2 py-1 text-[10px] text-text hover:bg-[#1a1a1a] transition-colors"
-            >
-              {p.label}
-            </button>
-          ))}
+          <div className="flex items-center gap-1.5 text-[10px]">
+            <span className="text-text-muted">for</span>
+            <input
+              type="number"
+              value={hoursDraft}
+              onChange={(e) => setHoursDraft(e.target.value)}
+              onBlur={() => {
+                const raw = parseFloat(hoursDraft);
+                const hours = Number.isFinite(raw) ? clampKeepAwakeHours(raw) : KEEP_AWAKE_HOURS_DEFAULT;
+                setHoursDraft(String(Math.round(hours * 10) / 10));
+              }}
+              disabled={untilStopped}
+              min={KEEP_AWAKE_HOURS_MIN}
+              max={KEEP_AWAKE_HOURS_MAX}
+              step={0.1}
+              className="w-14 bg-transparent border border-border px-1 py-0.5 text-text outline-none focus:border-accent text-center disabled:opacity-40"
+            />
+            <span className="text-text-muted">hours</span>
+          </div>
+          <label className="flex items-center gap-1.5 text-[10px] text-text-muted cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={untilStopped}
+              onChange={(e) => setUntilStopped(e.target.checked)}
+            />
+            Until stopped (no expiry)
+          </label>
+          <button
+            type="button"
+            onClick={() => {
+              if (untilStopped) {
+                start(0);
+                return;
+              }
+              const raw = parseFloat(hoursDraft);
+              const hours = Number.isFinite(raw) ? clampKeepAwakeHours(raw) : KEEP_AWAKE_HOURS_DEFAULT;
+              start(Math.round(hours * 3600));
+            }}
+            className="self-start px-2 py-0.5 text-[10px] text-accent border border-accent/40 rounded hover:bg-accent/10 transition-colors"
+          >
+            Start
+          </button>
         </div>
       )}
     </div>
