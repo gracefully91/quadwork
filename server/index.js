@@ -268,7 +268,7 @@ function writeMcpConfigFile(projectId, agentId, mcpHttpPort, token) {
 async function buildAgentArgs(projectId, agentId) {
   const cfg = readConfig();
   const project = cfg.projects?.find((p) => p.id === projectId);
-  if (!project) return { args: [], acRegistrationName: null, acServerPort: null, acRegistrationToken: null };
+  if (!project) return { args: [], acRegistrationName: null, acServerPort: null, acRegistrationToken: null, acInjectMode: null, acMcpHttpPort: null };
 
   const agentCfg = project.agents?.[agentId] || {};
   const command = agentCfg.command || "claude";
@@ -277,6 +277,7 @@ async function buildAgentArgs(projectId, agentId) {
   let acRegistrationName = null;
   let acServerPort = null;
   let acRegistrationToken = null;
+  let acInjectMode = null;
 
   // Permission bypass flags
   if (agentCfg.auto_approve !== false) {
@@ -289,6 +290,7 @@ async function buildAgentArgs(projectId, agentId) {
   const token = project.agentchattr_token;
   if (mcpHttpPort) {
     const injectMode = agentCfg.mcp_inject || (cliBase === "codex" ? "proxy_flag" : cliBase === "gemini" ? "env" : "flag");
+    acInjectMode = injectMode;
     if (injectMode === "flag") {
       // Claude/Kimi: register with AgentChattr to obtain a per-agent
       // token (#239 — session_token is browser auth, not MCP auth) and
@@ -348,7 +350,7 @@ async function buildAgentArgs(projectId, agentId) {
     }
   }
 
-  return { args, acRegistrationName, acServerPort, acRegistrationToken };
+  return { args, acRegistrationName, acServerPort, acRegistrationToken, acInjectMode, acMcpHttpPort: mcpHttpPort || null };
 }
 
 /**
@@ -387,6 +389,75 @@ function buildAgentEnv(projectId, agentId) {
   return env;
 }
 
+/**
+ * #394 / quadwork#253: recover from a heartbeat 409 (AgentChattr was
+ * restarted, in-memory registry wiped, our token is now stale). Mirrors
+ * wrapper.py:732-741. Re-registers the running agent, swaps the
+ * tracked name/token on the live session so the heartbeat interval
+ * picks up the new credentials on its next tick, refreshes whichever
+ * MCP transport this agent uses (Claude config file vs Codex proxy),
+ * and restarts the queue watcher in case the assigned name changed
+ * (multi-instance slot bump).
+ *
+ * Best-effort: any failure here just means the next 5s heartbeat will
+ * fail again and we'll re-enter recovery — no tight retry loop because
+ * startHeartbeat guards re-entry with `recovering`.
+ */
+async function recoverFrom409(projectId, agentId, session) {
+  if (!session.acServerPort) return;
+  const cfg = readConfig();
+  const project = cfg.projects?.find((p) => p.id === projectId);
+  const agentCfg = project?.agents?.[agentId] || {};
+  // AC may need a moment to come back up after a restart — wait briefly.
+  await waitForAgentChattrReady(session.acServerPort, 10000);
+
+  // Best-effort cleanup of the stale registration on disk so the
+  // fresh register isn't shoved into a slot 2 by leftover state.
+  const stale = readPersistedAgentToken(projectId, agentId);
+  if (stale) {
+    await deregisterAgent(session.acServerPort, agentId, stale).catch(() => {});
+    clearPersistedAgentToken(projectId, agentId);
+  }
+
+  const replacement = await registerAgent(session.acServerPort, agentId, agentCfg.display_name || null);
+  if (!replacement) return;
+
+  const previousName = session.acRegistrationName;
+  session.acRegistrationName = replacement.name;
+  session.acRegistrationToken = replacement.token;
+  writePersistedAgentToken(projectId, agentId, replacement.token);
+
+  // Refresh whichever MCP transport this agent uses so subsequent
+  // tool calls (and the queue-watcher's `mcp read` injections) hit
+  // AC with the new bearer token instead of the now-rejected one.
+  if (session.acInjectMode === "flag" && session.acMcpHttpPort) {
+    try { writeMcpConfigFile(projectId, agentId, session.acMcpHttpPort, replacement.token); } catch {}
+  } else if (session.acInjectMode === "proxy_flag" && session.acMcpHttpPort) {
+    try {
+      stopMcpProxy(projectId, agentId);
+      const upstreamUrl = `http://127.0.0.1:${session.acMcpHttpPort}`;
+      await startMcpProxy(projectId, agentId, upstreamUrl, replacement.token);
+    } catch {}
+  }
+
+  // If the assigned name changed (e.g. multi-instance slot collision)
+  // the queue watcher is now polling the wrong file. Restart it
+  // against the new name so chat reaches the right agent.
+  if (replacement.name !== previousName && session.term) {
+    if (session.queueWatcherHandle) {
+      stopQueueWatcher(session.queueWatcherHandle);
+      session.queueWatcherHandle = null;
+    }
+    try {
+      const { dir: acDir } = resolveProjectChattr(projectId);
+      if (acDir) {
+        const dataDir = path.join(acDir, "data");
+        session.queueWatcherHandle = startQueueWatcher(dataDir, replacement.name, session.term);
+      }
+    } catch {}
+  }
+}
+
 // Helper: spawn a PTY for a project/agent and register in agentSessions
 async function spawnAgentPty(project, agent) {
   const key = `${project}/${agent}`;
@@ -418,6 +489,8 @@ async function spawnAgentPty(project, agent) {
       acRegistrationName: built.acRegistrationName,
       acServerPort: built.acServerPort,
       acRegistrationToken: built.acRegistrationToken,
+      acInjectMode: built.acInjectMode,
+      acMcpHttpPort: built.acMcpHttpPort,
       acHeartbeatHandle: null,
       queueWatcherHandle: null,
     };
@@ -428,10 +501,16 @@ async function spawnAgentPty(project, agent) {
     // crash-detection window deregisters the agent and chat messages
     // never reach it. Mirrors wrapper.py:_heartbeat (lines 715-748).
     if (session.acRegistrationName && session.acServerPort && session.acRegistrationToken) {
+      // #394 / quadwork#253: pass getters (not raw values) so the 409
+      // recovery path below can swap acRegistrationName/Token in place
+      // and the very next heartbeat tick uses the replacement
+      // credentials without us having to tear down + restart the
+      // interval.
       session.acHeartbeatHandle = startHeartbeat(
         session.acServerPort,
-        session.acRegistrationName,
-        session.acRegistrationToken,
+        () => session.acRegistrationName,
+        () => session.acRegistrationToken,
+        { onConflict: () => recoverFrom409(project, agent, session) },
       );
     }
 
