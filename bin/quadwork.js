@@ -1518,14 +1518,28 @@ function migrateLoopGuardDefaults(config) {
     // Case 1: key already present *inside* the [routing] section.
     // We must NOT short-circuit on a same-named key in some other
     // table (e.g. `[other]\nmax_agent_hops = 7`) because that would
-    // leave a real partial [routing] section unpatched. Slice the
-    // file to just the [routing] body before the next [section]
-    // header (or EOF) and look there.
-    const routingBody = (() => {
-      const m = content.match(/^\s*\[routing\][ \t]*\r?\n([\s\S]*?)(?=^\s*\[|\z)/m);
-      return m ? m[1] : null;
-    })();
-    if (routingBody !== null && /^\s*max_agent_hops\s*=/m.test(routingBody)) continue;
+    // leave a real partial [routing] section unpatched. Walk the
+    // file line-by-line, find the [routing] header, and collect
+    // lines until the next [section] header or EOF. JS regex has
+    // no \z anchor and no reliable EOF lookahead inside /m, so a
+    // line scan is the simplest correct approach and also keeps
+    // pathological strings ("default = \"lazy\"") from confusing
+    // anything in the matcher.
+    const lines = content.split(/\r?\n/);
+    let inRouting = false;
+    let routingKeyPresent = false;
+    for (const line of lines) {
+      const headerMatch = line.match(/^\s*\[([^\]]+)\]/);
+      if (headerMatch) {
+        inRouting = headerMatch[1].trim() === "routing";
+        continue;
+      }
+      if (inRouting && /^\s*max_agent_hops\s*=/.test(line)) {
+        routingKeyPresent = true;
+        break;
+      }
+    }
+    if (routingKeyPresent) continue;
     let next;
     if (/^\s*\[routing\]/m.test(content)) {
       // Case 2: section exists, key missing. Insert the key on the
