@@ -1,0 +1,107 @@
+/**
+ * Per-agent queue watcher (#393 / quadwork#251).
+ *
+ * AgentChattr does NOT push chat to agents. When the operator types
+ * `@head` in chat, AC writes a job line to `{data_dir}/{name}_queue.jsonl`
+ * and walks away. Something on the agent side has to poll that file and
+ * inject an `mcp read` prompt into the running CLI's PTY so the agent
+ * picks up the chat. Without that injection the agent never responds,
+ * even when registration and heartbeats work.
+ *
+ * Reference: /Users/cho/Projects/agentchattr/wrapper.py lines 438-541
+ * (`_queue_watcher`). Polling (not fs.watch) is intentional: matches
+ * wrapper.py's behavior and avoids the cross-platform fs.watch
+ * footguns. The role/rules/identity-hint additions from wrapper.py
+ * lines 501-528 are intentionally out of scope for v1 per the issue.
+ */
+
+const fs = require("fs");
+const path = require("path");
+
+const POLL_INTERVAL_MS = 1000;
+
+/**
+ * Start polling `{dataDir}/{agentName}_queue.jsonl`. When non-empty,
+ * read all lines, truncate the file (atomic-ish claim — same race the
+ * Python wrapper accepts), parse each JSON line, build a single
+ * injected prompt, and write it into the supplied PTY terminal.
+ *
+ * Returns an opaque interval handle. Pass it to stopQueueWatcher to
+ * cancel; safe to call with null.
+ */
+function startQueueWatcher(dataDir, agentName, ptyTerm) {
+  if (!dataDir || !agentName || !ptyTerm) return null;
+  const queueFile = path.join(dataDir, `${agentName}_queue.jsonl`);
+
+  const tick = () => {
+    try {
+      if (!fs.existsSync(queueFile)) return;
+      const stat = fs.statSync(queueFile);
+      if (stat.size === 0) return;
+
+      const content = fs.readFileSync(queueFile, "utf-8");
+      // Atomic claim: truncate immediately so the next AC write lands
+      // in an empty file and we don't double-process the same job on
+      // the next tick. There's a small race if AC writes between the
+      // read and the truncate; wrapper.py accepts the same race.
+      fs.writeFileSync(queueFile, "");
+
+      const lines = content.split("\n").map((l) => l.trim()).filter(Boolean);
+      if (lines.length === 0) return;
+
+      let channel = "general";
+      let customPrompt = "";
+      let jobId = null;
+      let hasTrigger = false;
+      for (const line of lines) {
+        let data;
+        try {
+          data = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        hasTrigger = true;
+        if (data && typeof data === "object") {
+          if (typeof data.channel === "string") channel = data.channel;
+          if (typeof data.job_id === "string") jobId = data.job_id;
+          if (typeof data.prompt === "string" && data.prompt.trim()) {
+            customPrompt = data.prompt.trim();
+          }
+        }
+      }
+      if (!hasTrigger) return;
+
+      let prompt;
+      if (customPrompt) {
+        prompt = customPrompt;
+      } else if (jobId) {
+        prompt = `mcp read job_id=${jobId} - you were mentioned in a job thread, take appropriate action`;
+      } else {
+        prompt = `mcp read #${channel} - you were mentioned, take appropriate action`;
+      }
+
+      // Flatten newlines: multi-line writes trigger paste detection in
+      // Claude Code (shows "[Pasted text +N]") and can break injection
+      // of long prompts. Mirrors wrapper.py:532.
+      const flat = prompt.replace(/\n/g, " ");
+      ptyTerm.write(flat + "\r");
+    } catch {
+      // Swallow — next tick will retry. Logging here would spam the
+      // server output once per second on a permission error.
+    }
+  };
+
+  return setInterval(tick, POLL_INTERVAL_MS);
+}
+
+/**
+ * Stop a watcher started by startQueueWatcher. Safe to call with null.
+ */
+function stopQueueWatcher(handle) {
+  if (handle) clearInterval(handle);
+}
+
+module.exports = {
+  startQueueWatcher,
+  stopQueueWatcher,
+};
