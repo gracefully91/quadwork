@@ -63,7 +63,14 @@ function startQueueWatcher(dataDir, agentName, ptyTerm) {
         hasTrigger = true;
         if (data && typeof data === "object") {
           if (typeof data.channel === "string") channel = data.channel;
-          if (typeof data.job_id === "string") jobId = data.job_id;
+          // AgentChattr serializes job_id as an integer (agents.py
+          // defines `job_id: int | None`), so accept both numbers and
+          // strings here. Without this, job-thread triggers fall back
+          // to the channel prompt and the agent reads the wrong
+          // conversation. Cast to string for the prompt template.
+          if (typeof data.job_id === "number" || typeof data.job_id === "string") {
+            jobId = String(data.job_id);
+          }
           if (typeof data.prompt === "string" && data.prompt.trim()) {
             customPrompt = data.prompt.trim();
           }
