@@ -1546,9 +1546,12 @@ function migrateLoopGuardDefaults(config) {
       // line right after the [routing] header so it's scoped to the
       // section regardless of what other keys / comments live there.
       // Anchored to ^ so a `[routing]` substring inside a string
-      // value can't false-match.
+      // value can't false-match. The header line is allowed to have
+      // a trailing inline comment ("[routing] # keep me") so the
+      // insert still lands when the operator has annotated the
+      // section.
       next = content.replace(
-        /^(\s*\[routing\][ \t]*\r?\n)/m,
+        /^(\s*\[routing\][^\r\n]*\r?\n)/m,
         `$1max_agent_hops = 30\n`,
       );
     } else {
