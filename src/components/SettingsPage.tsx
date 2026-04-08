@@ -53,10 +53,11 @@ const BACKENDS: { value: string; label: string }[] = [
 ];
 const MODELS = ["opus", "sonnet", "haiku"];
 
-function Input({ label, value, onChange, type = "text", placeholder }: {
+function Input({ label, value, onChange, onBlur, type = "text", placeholder }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
+  onBlur?: () => void;
   type?: string;
   placeholder?: string;
 }) {
@@ -67,6 +68,7 @@ function Input({ label, value, onChange, type = "text", placeholder }: {
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
         placeholder={placeholder}
         className="bg-transparent border border-border px-2 py-1.5 text-[12px] text-text outline-none focus:border-accent"
       />
@@ -108,6 +110,31 @@ export default function SettingsPage() {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [autoAdded, setAutoAdded] = useState(false);
   const [cliStatus, setCliStatus] = useState<{ claude: boolean; codex: boolean } | null>(null);
+  // #419 / quadwork#308: draft-string mirror for the dashboard port
+  // field so the operator can clear it and retype without
+  // `parseInt("") || 8400` clobbering the buffer mid-keystroke.
+  // Kept in sync with config.port on load + blur commit.
+  const [portDraft, setPortDraft] = useState<string>("8400");
+  // #419 / quadwork#308: per-project MCP port drafts keyed by
+  // `${projectId}-http` / `${projectId}-sse`. Same draft-string
+  // pattern as the global port input above — the previous
+  // `parseInt(v) || undefined` onChange clobbered partial typing.
+  const [projectPortDrafts, setProjectPortDrafts] = useState<Record<string, string>>({});
+  const getProjectPortDraft = (projectId: string, key: "http" | "sse", fallback: number | undefined) => {
+    const dkey = `${projectId}-${key}`;
+    if (dkey in projectPortDrafts) return projectPortDrafts[dkey];
+    return fallback ? String(fallback) : "";
+  };
+  const setProjectPortDraftValue = (projectId: string, key: "http" | "sse", value: string) => {
+    setProjectPortDrafts((prev) => ({ ...prev, [`${projectId}-${key}`]: value }));
+  };
+  const commitProjectPortDraft = (idx: number, projectId: string, key: "http" | "sse", field: "mcp_http_port" | "mcp_sse_port") => {
+    const draft = projectPortDrafts[`${projectId}-${key}`] ?? "";
+    const n = parseInt(draft, 10);
+    const clamped = Number.isFinite(n) && n > 0 && n <= 65535 ? n : undefined;
+    updateProject(idx, { [field]: clamped } as Partial<ProjectConfig>);
+    setProjectPortDrafts((prev) => ({ ...prev, [`${projectId}-${key}`]: clamped ? String(clamped) : "" }));
+  };
 
   const load = useCallback(() => {
     fetch("/api/config")
@@ -115,7 +142,9 @@ export default function SettingsPage() {
         if (!r.ok) throw new Error(`${r.status}`);
         return r.json();
       })
-      .then((data) => setConfig({
+      .then((data) => {
+        setPortDraft(String(data.port || 8400));
+        return setConfig({
         port: data.port || 8400,
         agentchattr_url: data.agentchattr_url || "http://127.0.0.1:8300",
         agentchattr_token: data.agentchattr_token || "",
@@ -123,7 +152,8 @@ export default function SettingsPage() {
         reviewer_github_user: data.reviewer_github_user || "",
         operator_name: data.operator_name || "user",
         projects: data.projects || [],
-      }))
+        });
+      })
       .catch(() => {});
   }, []);
 
@@ -400,8 +430,14 @@ export default function SettingsPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <Input
             label="QuadWork Dashboard Port"
-            value={String(config.port)}
-            onChange={(v) => updateGlobal("port", parseInt(v, 10) || 8400)}
+            value={portDraft}
+            onChange={(v) => setPortDraft(v)}
+            onBlur={() => {
+              const n = parseInt(portDraft, 10);
+              const clamped = Number.isFinite(n) && n > 0 && n <= 65535 ? n : 8400;
+              updateGlobal("port", clamped);
+              setPortDraft(String(clamped));
+            }}
             type="number"
           />
           <Input
@@ -662,15 +698,17 @@ export default function SettingsPage() {
                         />
                         <Input
                           label="MCP HTTP Port"
-                          value={String(project.mcp_http_port || "")}
-                          onChange={(v) => updateProject(idx, { mcp_http_port: parseInt(v, 10) || undefined } as Partial<ProjectConfig>)}
+                          value={getProjectPortDraft(project.id, "http", project.mcp_http_port)}
+                          onChange={(v) => setProjectPortDraftValue(project.id, "http", v)}
+                          onBlur={() => commitProjectPortDraft(idx, project.id, "http", "mcp_http_port")}
                           type="number"
                           placeholder="8200"
                         />
                         <Input
                           label="MCP SSE Port"
-                          value={String(project.mcp_sse_port || "")}
-                          onChange={(v) => updateProject(idx, { mcp_sse_port: parseInt(v, 10) || undefined } as Partial<ProjectConfig>)}
+                          value={getProjectPortDraft(project.id, "sse", project.mcp_sse_port)}
+                          onChange={(v) => setProjectPortDraftValue(project.id, "sse", v)}
+                          onBlur={() => commitProjectPortDraft(idx, project.id, "sse", "mcp_sse_port")}
                           type="number"
                           placeholder="8201"
                         />
