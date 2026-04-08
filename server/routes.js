@@ -315,21 +315,46 @@ router.put("/api/loop-guard", async (req, res) => {
   // whole fix: the previous version updated max_hops live but left
   // the channel frozen, which made the widget look like a no-op.
   let live = false;
-  // Only auto-resume when the operator is RAISING the limit. Lowering
-  // the value is a "make the system stricter" gesture — if the router
-  // is already paused on a runaway loop, we must leave it paused so
-  // the operator can investigate, otherwise a stricter limit would
-  // paradoxically unstick the runaway. Unknown previous (null) =
-  // don't auto-resume: we can't prove this is a raise.
-  const shouldAutoResume = previousValue !== null && value > previousValue;
+  let autoResumed = false;
+  // Only auto-resume when ALL of:
+  //   (a) operator is RAISING the limit (lowering = "make it
+  //       stricter", must leave a paused runaway alone)
+  //   (b) the router is currently paused (AC's continue_routing
+  //       resets hop_count + paused + guard_emitted unconditionally,
+  //       so firing it on an actively-running chain would silently
+  //       extend the chain beyond the new limit — t2a finding)
+  //   (c) previousValue is known (null means we can't prove it's a
+  //       raise, so err on the side of not touching router state)
+  const isRaising = previousValue !== null && value > previousValue;
   const ensureLive = async (sessionToken) => {
     await sendWsEvent(base, sessionToken, { type: "update_settings", data: { max_agent_hops: value } });
-    if (shouldAutoResume) {
-      // Resume any paused channels. /continue is routed by AC's ws
-      // message handler when the buffer starts with /continue; the
-      // handler calls router.continue_routing() which unpauses and
-      // resets hop_count. No-op when the channel is already running.
-      await sendWsEvent(base, sessionToken, { type: "message", text: "/continue", channel: "general", sender: "user" });
+    if (isRaising) {
+      // Check AC's /api/status before firing /continue so we don't
+      // reset hop_count on a running (unpaused) chain. The endpoint
+      // exposes `paused: true` iff ANY channel currently paused.
+      let isPaused = false;
+      try {
+        const statusRes = await fetch(`${base}/api/status`, {
+          headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {},
+          signal: AbortSignal.timeout(5000),
+        });
+        if (statusRes.ok) {
+          const statusJson = await statusRes.json();
+          isPaused = !!(statusJson && statusJson.paused);
+        }
+      } catch {
+        // Status fetch failed — err toward "don't auto-resume". The
+        // operator can always type /continue manually.
+      }
+      if (isPaused) {
+        // Resume paused channels. /continue is routed by AC's ws
+        // message handler when the buffer starts with /continue;
+        // the handler calls router.continue_routing() which
+        // unpauses AND resets hop_count — which is why we gate on
+        // isPaused to avoid wiping the counter on a live chain.
+        await sendWsEvent(base, sessionToken, { type: "message", text: "/continue", channel: "general", sender: "user" });
+        autoResumed = true;
+      }
     }
     live = true;
   };
@@ -363,7 +388,7 @@ router.put("/api/loop-guard", async (req, res) => {
     console.warn(`[loop-guard] live update failed for ${projectId}: ${err.message || err}`);
   }
 
-  res.json({ ok: true, value, live, previousValue, resumed: shouldAutoResume && live });
+  res.json({ ok: true, value, live, previousValue, resumed: autoResumed });
 });
 
 // #412 / quadwork#279: project history export + import.
