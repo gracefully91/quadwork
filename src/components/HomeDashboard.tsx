@@ -158,8 +158,13 @@ export default function HomeDashboard() {
               <span className="text-accent shrink-0 font-semibold w-12">
                 {item.projectName}
               </span>
-              <span className="text-[#ffcc00] shrink-0 font-semibold w-6">
-                {item.actor}
+              <span className="text-[#ffcc00] shrink-0 font-semibold w-12">
+                {/* #420 / quadwork#307: widen column + mirror the
+                    RE1/RE2 short labels PR #272 (#263) already uses
+                    in the chat sender column. w-6 was 24px and
+                    overflowed reviewer1/reviewer2 into the adjacent
+                    message text column. */}
+                {item.actor === "reviewer1" ? "RE1" : item.actor === "reviewer2" ? "RE2" : item.actor}
               </span>
               <span className="text-text truncate min-w-0">
                 {item.text}
