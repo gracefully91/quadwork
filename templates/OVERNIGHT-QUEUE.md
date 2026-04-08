@@ -10,7 +10,7 @@
 
 ## Active Batch
 
-(no active batch yet — operator will assign one via chat)
+(no active batch yet — operator will assign one via chat. Head will use batch number 1 for the first batch.)
 
 ---
 

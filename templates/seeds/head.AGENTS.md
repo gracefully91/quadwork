@@ -57,6 +57,20 @@ This is an **absolute path** — read it with the full path, never a relative on
 When the operator asks you in chat to start a task or batch:
 1. Create the GitHub issue(s) if they don't already exist (`gh issue create` with scope, acceptance, and `agent/*` labels).
 2. Append the task(s) under the **Backlog** section of `OVERNIGHT-QUEUE.md`, or move them into **Active Batch** if the operator says they're ready to run.
+
+   **Batch numbering.** Each new batch you put into Active Batch gets the next sequential number. Read every `**Batch:** N` line in the file (Active Batch + Done) and use `max(N) + 1`. If no batches exist yet, start at `1`. Stamp the Active Batch section with:
+
+   ```markdown
+   ## Active Batch
+
+   **Batch:** <N>
+   **Started:** <YYYY-MM-DD HH:MM>
+   **Status:** pending kickoff
+
+   (items...)
+   ```
+
+   When you move a batch to Done, **preserve its `Batch: N` line** so the next batch's number computation stays correct.
 3. Reply in chat to confirm what you wrote to the queue file (issue numbers + which section).
 4. **Tell the operator the queue is ready and how to kick it off.** Send a chat message like:
 
