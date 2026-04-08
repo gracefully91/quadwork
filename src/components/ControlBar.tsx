@@ -160,6 +160,13 @@ function SystemSection() {
   const [hoursDraft, setHoursDraft] = useState<string>(String(KEEP_AWAKE_HOURS_DEFAULT));
   const [untilStopped, setUntilStopped] = useState<boolean>(false);
   const [showHelp, setShowHelp] = useState(false);
+  // #425 / quadwork#311: per-subsection header-level help popovers.
+  // These replace the old `?` that lived inside the Keep Awake
+  // presets popup (which disappeared while Awake was active) and
+  // satisfy the ticket's "each subsection has its own (?) tooltip
+  // with deeper detail" requirement for Notification Sound too.
+  const [showKeepAwakeHelp, setShowKeepAwakeHelp] = useState(false);
+  const [showSoundHelp, setShowSoundHelp] = useState(false);
   // #409 / quadwork#273: notification sound prefs. Hydrated from
   // localStorage on first render so the toggle/dropdown reflect the
   // value the chat panel is reading.
@@ -247,10 +254,21 @@ function SystemSection() {
   return (
     <div className="flex flex-col gap-2 relative">
       {showKeepAwakeSubsection && (
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-0.5 relative">
           <div className="flex items-center gap-1 text-[10px] text-text-muted uppercase tracking-wider font-semibold">
-            Keep Mac Awake
+            <span>Keep Mac Awake</span>
+            <button
+              type="button"
+              aria-label="About Keep Mac Awake"
+              onClick={() => setShowKeepAwakeHelp((s) => !s)}
+              className="w-3.5 h-3.5 rounded-full border border-border text-[9px] leading-none text-text-muted hover:text-accent hover:border-accent inline-flex items-center justify-center"
+            >?</button>
           </div>
+          {showKeepAwakeHelp && (
+            <div className="absolute left-0 top-4 z-30 w-64 p-2 text-[10px] leading-snug text-text bg-bg-surface border border-border rounded shadow-lg">
+              <b>Keep Mac Awake</b> runs macOS <code>caffeinate</code> to stop the screen, disk, and system idle timers from sleeping your Mac during an overnight run. Make sure the laptop is plugged in — caffeinate blocks sleep but not battery drain.
+            </div>
+          )}
           <div className="text-[10px] text-text-muted leading-tight">
             {active && remaining !== null && remaining > 0
               ? `Awake for ${formatTime(remaining)} more — keep Mac plugged in`
@@ -287,10 +305,21 @@ function SystemSection() {
 
       {/* #409 / quadwork#273 + #425 / quadwork#311: notification sound
           is now its own subsection with an always-visible descriptor. */}
-      <div className="flex flex-col gap-0.5">
-        <div className="text-[10px] text-text-muted uppercase tracking-wider font-semibold">
-          Notification Sound
+      <div className="flex flex-col gap-0.5 relative">
+        <div className="flex items-center gap-1 text-[10px] text-text-muted uppercase tracking-wider font-semibold">
+          <span>Notification Sound</span>
+          <button
+            type="button"
+            aria-label="About Notification Sound"
+            onClick={() => setShowSoundHelp((s) => !s)}
+            className="w-3.5 h-3.5 rounded-full border border-border text-[9px] leading-none text-text-muted hover:text-accent hover:border-accent inline-flex items-center justify-center"
+          >?</button>
         </div>
+        {showSoundHelp && (
+          <div className="absolute left-0 top-4 z-30 w-64 p-2 text-[10px] leading-snug text-text bg-bg-surface border border-border rounded shadow-lg">
+            <b>Notification Sound</b> plays a brief chime when an agent posts a new message (not your own sends, not system events). Sound choice picks one of the bundled chimes. Background-only mode suppresses the chime while the tab is focused — ding only when you&apos;re looking elsewhere. All prefs persist in localStorage.
+          </div>
+        )}
         <div className="text-[10px] text-text-muted leading-tight">
           Plays a chime when an agent posts a new message.
         </div>
