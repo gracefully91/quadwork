@@ -46,18 +46,37 @@ reads the JSONL line-by-line, preserves the persisted `id`, and
 resumes `_next_id` from `max_id + 1`. So a restart rehydrates the
 full history, including stable IDs.
 
-### Dropcast's live data directory already has 116 persisted messages
+### All three operator AC installs have persisted chat logs
+
+Issue #303 explicitly asked for an AC1 / AC2 / QuadWork comparison
+against the operator's real data dirs. All three have the same
+`agentchattr_log.jsonl` layout and a non-trivial amount of history:
 
 ```
-$ wc -l /Users/cho/.quadwork/dropcast/agentchattr/data/agentchattr_log.jsonl
-     116 agentchattr_log.jsonl
+$ wc -l \
+    /Users/cho/Projects/agentchattr/data/agentchattr_log.jsonl \
+    /Users/cho/Projects/agent-os/agentchattr2/data/agentchattr_log.jsonl \
+    /Users/cho/.quadwork/dropcast/agentchattr/data/agentchattr_log.jsonl
+      47 agentchattr/data/agentchattr_log.jsonl                 # AC1
+     102 agent-os/agentchattr2/data/agentchattr_log.jsonl       # AC2
+     116 .quadwork/dropcast/agentchattr/data/agentchattr_log.jsonl  # QuadWork per-project
+```
 
-$ head -1 agentchattr_log.jsonl
+Sample of the dropcast log to confirm the shape round-trips stable
+IDs:
+
+```
+$ head -1 /Users/cho/.quadwork/dropcast/agentchattr/data/agentchattr_log.jsonl
 {"id": 0, "uid": "95e259bf-...", "sender": "user",
  "text": "@head are you online?", "type": "chat",
  "timestamp": 1775637890.35, "time": "09:44:50",
  "attachments": [], "channel": "general"}
 ```
+
+So chat-history-on-disk is **not a dropcast-specific accident** —
+it's the default behavior of AgentChattr's `MessageStore` in every
+install the operator has. There is no hidden config flag that needs
+to be flipped in QuadWork to enable it.
 
 ### `history_limit` is "all" by default
 
@@ -82,8 +101,12 @@ everything in the JSONL. No default cap.
   class (load/add/flush/clear paths)
 - `~/.quadwork/dropcast/agentchattr/app.py` — store instantiation
   + ws history replay
+- `/Users/cho/Projects/agentchattr/data/agentchattr_log.jsonl` —
+  AC1, 47 rows
+- `/Users/cho/Projects/agent-os/agentchattr2/data/agentchattr_log.jsonl` —
+  AC2, 102 rows
 - `~/.quadwork/dropcast/agentchattr/data/agentchattr_log.jsonl` —
-  live 116-message history
+  QuadWork per-project, 116 rows
 - `~/.quadwork/dropcast/agentchattr/data/settings.json` — confirms
   `history_limit = "all"`
 
