@@ -352,6 +352,9 @@ router.get("/api/project-history", async (req, res) => {
     const target = `${base}/api/messages?channel=general&limit=100000`;
     const r = await fetch(target, {
       headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {},
+      // Cap the AC fetch at 30s so a hung daemon doesn't park the
+      // export request indefinitely.
+      signal: AbortSignal.timeout(30000),
     });
     if (!r.ok) {
       const detail = await r.text().catch(() => "");
@@ -419,6 +422,17 @@ router.post("/api/project-history", express.json({ limit: "10mb" }), async (req,
   // the original sender so the imported transcript still attributes
   // each line correctly. Pace the writes so AC's ws handler isn't
   // overloaded on a multi-thousand-message import.
+  //
+  // SECURITY NOTE: This deliberately bypasses /api/chat's #230/#288
+  // sanitize-as-user lockdown — the imported sender field is sent
+  // straight to AC's ws, so a crafted import file CAN post as
+  // `head` / `dev` / etc. That's intentional: imports must round-
+  // trip the original attribution to be useful (otherwise every
+  // restored message would say `user` and the transcript would be
+  // worthless). The trade-off is acceptable because the only entry
+  // point is an authenticated dashboard operator picking a file by
+  // hand and clicking through the project-mismatch confirm. Don't
+  // expose this route from a less-trusted surface without revisiting.
   let imported = 0;
   let skipped = 0;
   const errors = [];
