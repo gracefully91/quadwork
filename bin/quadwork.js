@@ -1489,14 +1489,21 @@ function migrateLegacyProjects(config) {
 }
 
 /**
- * #403 / quadwork#274 migration: append `[routing] max_agent_hops = 30`
- * to any per-project config.toml that's missing it. Idempotent and
- * conservative — leaves files that already have a `max_agent_hops`
- * key alone (whatever value the operator picked stays put), and
- * leaves files that have a [routing] section but no max_agent_hops
- * key alone too rather than risk patching a section we don't fully
- * understand. The web/CLI templates write the key on first run, so
- * this only catches projects created before #403.
+ * #403 / quadwork#274 migration: ensure every per-project config.toml
+ * has `[routing] max_agent_hops = 30`. Idempotent + line-based so
+ * existing comments and other keys in the [routing] section are
+ * preserved.
+ *
+ * #415 / quadwork#298: previous version skipped projects that had
+ * a [routing] section but no max_agent_hops key (e.g. only
+ * `default = "none"`). Those projects silently retained AC's
+ * default of 4 and kept firing the loop guard mid-cycle. This
+ * version handles three cases:
+ *
+ *   1. max_agent_hops already set     → no change
+ *   2. [routing] section exists,
+ *      max_agent_hops missing         → insert key under the header
+ *   3. no [routing] section at all    → append a fresh section
  */
 function migrateLoopGuardDefaults(config) {
   if (!config.projects || config.projects.length === 0) return;
@@ -1508,12 +1515,28 @@ function migrateLoopGuardDefaults(config) {
     if (!fs.existsSync(tomlPath)) continue;
     let content;
     try { content = fs.readFileSync(tomlPath, "utf-8"); } catch { continue; }
+    // Case 1: key already present anywhere in the file. Idempotent.
     if (/^\s*max_agent_hops\s*=/m.test(content)) continue;
-    if (/^\s*\[routing\]/m.test(content)) continue;
-    const trailing = content.endsWith("\n") ? "" : "\n";
-    const addition = `${trailing}\n[routing]\ndefault = "none"\nmax_agent_hops = 30\n`;
+    let next;
+    if (/^\s*\[routing\]/m.test(content)) {
+      // Case 2: section exists, key missing. Insert the key on the
+      // line right after the [routing] header so it's scoped to the
+      // section regardless of what other keys / comments live there.
+      // Anchored to ^ so a `[routing]` substring inside a string
+      // value can't false-match.
+      next = content.replace(
+        /^(\s*\[routing\][ \t]*\r?\n)/m,
+        `$1max_agent_hops = 30\n`,
+      );
+    } else {
+      // Case 3: no section. Append a fresh one at the end of the
+      // file with both default + max_agent_hops.
+      const trailing = content.endsWith("\n") ? "" : "\n";
+      next = content + `${trailing}\n[routing]\ndefault = "none"\nmax_agent_hops = 30\n`;
+    }
+    if (next === content) continue;
     try {
-      fs.writeFileSync(tomlPath, content + addition);
+      fs.writeFileSync(tomlPath, next);
       log(`  Loop guard default → ${project.id} (max_agent_hops = 30)`);
     } catch { /* non-fatal */ }
   }
