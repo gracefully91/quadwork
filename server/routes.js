@@ -148,11 +148,41 @@ router.get("/api/chat", async (req, res) => {
 const { WebSocket: NodeWebSocket } = require("ws");
 const { syncChattrToken } = require("./config");
 
+// #236: wait for AgentChattr to echo our message back over the same ws
+// connection before resolving, instead of fire-and-forgetting. AC's
+// /ws handler does this on every connect:
+//   1. Replays history as N `{type:"message", data: msg}` frames.
+//   2. Sends one `{type:"status", data: …}` frame (broadcast_status).
+//   3. Enters the receive loop and accepts our outgoing frame.
+// After our `type:"message"` is processed, AC calls `store.add()`
+// which broadcasts the stored record back to all clients (including
+// us) as another `{type:"message", data: msg}`.
+//
+// To get a race-free ack we therefore:
+//   A. Wait for the first `type:"status"` frame to confirm the
+//      history replay is done — any `type:"message"` frame seen
+//      BEFORE that is historical and must be ignored.
+//   B. Only then send our message and record the highest message
+//      id observed so far as a correlation baseline.
+//   C. Accept the first post-send `type:"message"` whose payload
+//      matches (sender, text, channel, reply_to) AND whose id is
+//      strictly greater than the baseline (AC ids are monotonically
+//      increasing from store.add). This eliminates the risk a
+//      reviewer flagged on #382 round 1: a historical identical
+//      message from <1.5s ago could have satisfied the old
+//      heuristic matcher.
+// On timeout / early close / 4003, we surface a proper error so the
+// /api/chat handler can return a 5xx (or 401) instead of a silent
+// {ok:true}.
 function sendViaWebSocket(baseUrl, sessionToken, message) {
   return new Promise((resolve, reject) => {
     const wsUrl = `${baseUrl.replace(/^http/, "ws")}/ws?token=${encodeURIComponent(sessionToken || "")}`;
     const ws = new NodeWebSocket(wsUrl);
     let settled = false;
+    let historyFlushed = false;
+    let sent = false;
+    let maxIdAtSend = -Infinity;
+    let maxHistoryId = -Infinity;
     const finish = (err, value) => {
       if (settled) return;
       settled = true;
@@ -160,14 +190,56 @@ function sendViaWebSocket(baseUrl, sessionToken, message) {
       if (err) reject(err); else resolve(value);
     };
     const giveUp = setTimeout(() => finish(new Error("websocket send timeout")), 4000);
-    ws.on("open", () => {
+    const doSend = () => {
+      if (sent || settled) return;
       try {
+        maxIdAtSend = maxHistoryId;
         ws.send(JSON.stringify({ type: "message", ...message }));
-        // Server acks via broadcast, but the dashboard's POST /api/chat
-        // contract only needs to know the message was accepted. Wait
-        // ~250ms for the server to enqueue + close cleanly.
-        setTimeout(() => { clearTimeout(giveUp); finish(null, { ok: true }); }, 250);
+        sent = true;
       } catch (err) { clearTimeout(giveUp); finish(err); }
+    };
+    ws.on("open", () => {
+      // Do NOT send yet. Wait for the status frame that marks the
+      // end of history replay so we have a clean correlation
+      // baseline. A safety timer covers the (unlikely) case of an
+      // AC build that doesn't emit status on connect — after 750ms
+      // we fall back to sending anyway, using whatever max id we
+      // collected from history so far as the baseline.
+      setTimeout(() => {
+        if (!historyFlushed) {
+          historyFlushed = true;
+          doSend();
+        }
+      }, 750);
+    });
+    ws.on("message", (raw) => {
+      if (settled) return;
+      let frame;
+      try { frame = JSON.parse(raw.toString()); } catch { return; }
+      if (!frame || !frame.type) return;
+      if (frame.type === "status" && !historyFlushed) {
+        historyFlushed = true;
+        doSend();
+        return;
+      }
+      if (frame.type !== "message" || !frame.data) return;
+      const d = frame.data;
+      // Track the highest message id we have observed, whether from
+      // history replay or from other live broadcasts. Used as the
+      // baseline for the post-send correlation check.
+      if (typeof d.id === "number" && d.id > maxHistoryId) {
+        maxHistoryId = d.id;
+      }
+      if (!sent) return; // anything before our send is history
+      if (typeof d.id !== "number" || d.id <= maxIdAtSend) return;
+      if (d.sender !== message.sender) return;
+      if (d.text !== message.text) return;
+      if ((d.channel || "general") !== (message.channel || "general")) return;
+      const wantReply = message.reply_to ?? null;
+      const gotReply = d.reply_to ?? null;
+      if (wantReply !== gotReply) return;
+      clearTimeout(giveUp);
+      finish(null, { ok: true, message: d });
     });
     ws.on("error", (err) => { clearTimeout(giveUp); finish(err); });
     ws.on("close", (code, reason) => {
@@ -179,6 +251,15 @@ function sendViaWebSocket(baseUrl, sessionToken, message) {
         const e = new Error(msg);
         e.code = "EAGENTCHATTR_401";
         finish(e);
+        return;
+      }
+      // Any other premature close after we sent but before we saw
+      // the echo is an error — the old code path would have claimed
+      // success, silently swallowing a server-side reject.
+      if (!settled) {
+        clearTimeout(giveUp);
+        const r = (reason && reason.toString()) || "";
+        finish(new Error(`websocket closed before ack (code=${code}${r ? ", reason=" + r : ""})`));
       }
     });
   });
@@ -861,8 +942,12 @@ router.post("/api/chat", async (req, res) => {
   const attemptSend = () => sendViaWebSocket(base, sessionToken, message);
 
   try {
-    await attemptSend();
-    return res.json({ ok: true });
+    // #236: sendViaWebSocket now waits for AC's broadcast echo and
+    // returns `{ok, message}` where `message` is the stored record
+    // (with server-assigned id/timestamp). Pass it through so
+    // callers regain parity with the old /api/send response body.
+    const result = await attemptSend();
+    return res.json({ ok: true, message: result.message });
   } catch (err) {
     // If the cached session_token is stale (AgentChattr regenerates
     // one on every restart) the ws closes with code 4003 — re-sync
@@ -876,8 +961,8 @@ router.post("/api/chat", async (req, res) => {
       const { token: refreshed } = getChattrConfig(projectId);
       if (refreshed && refreshed !== sessionToken) {
         try {
-          await sendViaWebSocket(base, refreshed, message);
-          return res.json({ ok: true, resynced: true });
+          const retry = await sendViaWebSocket(base, refreshed, message);
+          return res.json({ ok: true, resynced: true, message: retry.message });
         } catch (retryErr) {
           console.warn(`[chat] retry after token resync failed: ${retryErr.message}`);
           return res.status(401).json({ error: "AgentChattr auth failed (token resync did not help)", detail: retryErr.message });
@@ -2813,3 +2898,6 @@ module.exports.readLastLines = readLastLines;
 // #380: expose checkTelegramBridgePythonDeps so the bridge test can
 // exercise the venv-path interpreter argument round trip.
 module.exports.checkTelegramBridgePythonDeps = checkTelegramBridgePythonDeps;
+// #236: expose sendViaWebSocket so the chat-ws-send regression test
+// can verify the ack/body/error paths against a fake AC ws server.
+module.exports.sendViaWebSocket = sendViaWebSocket;
