@@ -2451,12 +2451,29 @@ router.get("/api/telegram", async (req, res) => {
       }
     } catch { /* non-fatal — widget will just show no username */ }
   }
+  // #353: if the bridge is not running but a log file exists with
+  // content, tail it and expose it as `last_error` so the widget
+  // can surface runtime crashes (bad token mid-session, network
+  // failure, config parse error) that happen after the initial
+  // 500 ms post-spawn liveness check and would otherwise just
+  // revert the pill to Stopped with no explanation.
+  const running = isTelegramRunning(projectId);
+  let lastError = "";
+  if (!running) {
+    const logPath = telegramBridgeLog(projectId);
+    try {
+      if (fs.existsSync(logPath) && fs.statSync(logPath).size > 0) {
+        lastError = readLastLines(logPath, 20);
+      }
+    } catch {}
+  }
   res.json({
-    running: isTelegramRunning(projectId),
+    running,
     configured,
     chat_id: chatId,
     bot_username: botUsername,
     bridge_installed: bridgeInstalled,
+    last_error: lastError,
   });
 });
 
@@ -2545,6 +2562,13 @@ router.post("/api/telegram", async (req, res) => {
       // BEFORE spawn and passed through stdio so the detached
       // child keeps writing after the parent unrefs it.
       const logPath = telegramBridgeLog(projectId);
+      // #353 follow-up: truncate the log at the start of every
+      // spawn so the status endpoint's last_error tail only ever
+      // reflects the *current* session. Otherwise a previous
+      // crash's trace would linger forever and the widget would
+      // keep surfacing a stale error even after the operator
+      // fixed the underlying problem and restarted cleanly.
+      try { fs.writeFileSync(logPath, ""); } catch {}
       let outFd, errFd;
       try {
         outFd = fs.openSync(logPath, "a");
