@@ -1253,10 +1253,11 @@ function parseActiveBatch(queueText) {
   const batchNumber = batchMatch ? parseInt(batchMatch[1], 10) : null;
   // Only collect issue numbers from lines that look like list-item
   // entries — i.e. lines whose first content token is either `#N`
-  // or `[#N]` after an optional list marker. This rejects prose
-  // like "Tracking umbrella: #293", "next after #294 merged", and
-  // similar dependency / commentary references that t2a flagged on
-  // realproject7/dropcast's queue.
+  // or `[#N]` after an optional list marker, and optionally after
+  // a GitHub-flavored markdown checkbox token `[ ]` / `[x]` / `[X]`.
+  // This rejects prose like "Tracking umbrella: #293", "next after
+  // #294 merged", and similar dependency / commentary references
+  // that t2a flagged on realproject7/dropcast's queue.
   //
   // Accepted line shapes:
   //   - #295 sub-A heartbeat
@@ -1265,12 +1266,22 @@ function parseActiveBatch(queueText) {
   //   #295 sub-A heartbeat
   //   - [#295] sub-A heartbeat
   //   [#295] sub-A heartbeat
+  //   - [ ] #295 sub-A heartbeat      (#342/quadwork#341: GFM checkbox)
+  //   - [x] #295 sub-A heartbeat      (checked)
+  //   - [X] #295 sub-A heartbeat      (checked, uppercase)
   //
   // Rejected:
   //   Tracking umbrella: #293
   //   Assigned next after #294 merged.
   //   See #295 for context.
-  const ITEM_LINE_RE = /^\s*(?:[-*]\s+|\d+\.\s+)?\[?#(\d{1,6})\]?\b/;
+  //
+  // The previous regex permitted an optional `[` *immediately*
+  // before `#`, which happened to match `[#295]` but not `[ ] #295`
+  // (a space between `[` and `#`), so Head-generated queues that
+  // used GFM checkbox syntax produced zero issue numbers and the
+  // Current Batch panel showed empty. #341 adds an explicit optional
+  // checkbox token after the list marker.
+  const ITEM_LINE_RE = /^\s*(?:[-*]\s+|\d+\.\s+)?(?:\[[ xX]\]\s+)?\[?#(\d{1,6})\]?\b/;
   const seen = new Set();
   const issueNumbers = [];
   for (const line of section.split("\n")) {
@@ -2475,3 +2486,7 @@ router.post("/api/telegram", async (req, res) => {
 });
 
 module.exports = router;
+// #341: export parseActiveBatch for unit tests. No production callers
+// outside this file; the export is strictly for the node:assert
+// script at server/routes.parseActiveBatch.test.js.
+module.exports.parseActiveBatch = parseActiveBatch;
