@@ -1116,7 +1116,10 @@ bridge_sender = "telegram-bridge"
         if (fs.existsSync(bridgeScript)) {
           log("Starting Telegram bridge...");
           const bridgeToml = path.join(CONFIG_DIR, `telegram-${setup.projectName}.toml`);
-          const bridgeTomlContent = `[telegram]\nbot_token = "${botToken}"\nchat_id = "${chatId}"\n\n[agentchattr]\nurl = "${projectChattrUrl}"\n`;
+          // #383 Bug 2: the bridge only reads agentchattr_url from
+          // inside [telegram]. A separate [agentchattr] section is
+          // silently ignored and the bridge falls back to :8300.
+          const bridgeTomlContent = `[telegram]\nbot_token = "${botToken}"\nchat_id = "${chatId}"\nagentchattr_url = "${projectChattrUrl}"\n`;
           fs.writeFileSync(bridgeToml, bridgeTomlContent, { mode: 0o600 });
           fs.chmodSync(bridgeToml, 0o600);
           const bridgeProc = spawn("python3", [bridgeScript, "--config", bridgeToml], {
