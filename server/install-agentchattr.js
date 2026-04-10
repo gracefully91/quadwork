@@ -192,6 +192,8 @@ function _installAgentChattrLocked(dir, setError) {
       if (pipResult === null) return setError(`pip install -r ${reqFile} failed`);
     }
   }
+  // #388: patch sender-column overflow CSS after clone/install
+  patchAgentchattrCss(dir);
   return dir;
 }
 
@@ -207,9 +209,60 @@ function chattrSpawnArgs(dir, extraArgs) {
   return { command: venvPython, spawnArgs: ["run.py", ...(extraArgs || [])], cwd: dir };
 }
 
+/**
+ * #388: Patch AgentChattr's static files for sender-column overflow.
+ * Idempotent — skips if the marker is already present.
+ * Called after install and after update (git pull overwrites static/).
+ *
+ * CSS: cap .msg-sender width with ellipsis truncation.
+ * JS:  add title attribute to .msg-sender spans for hover tooltip.
+ */
+function patchAgentchattrCss(dir) {
+  if (!dir) return;
+  // --- CSS patch ---
+  const cssPath = path.join(dir, "static", "style.css");
+  if (fs.existsSync(cssPath)) {
+    try {
+      const content = fs.readFileSync(cssPath, "utf-8");
+      if (!content.includes("/* quadwork#388 sender-overflow fix */")) {
+        const patch = `
+/* quadwork#388 sender-overflow fix */
+.msg-sender {
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+  vertical-align: middle;
+}
+`;
+        fs.writeFileSync(cssPath, content + patch);
+      }
+    } catch {}
+  }
+  // --- JS patch: add title attribute to .msg-sender for hover tooltip ---
+  const jsPath = path.join(dir, "static", "chat.js");
+  if (fs.existsSync(jsPath)) {
+    try {
+      const content = fs.readFileSync(jsPath, "utf-8");
+      if (!content.includes("quadwork#388")) {
+        // Add title= to the msg-sender span so truncated names show full on hover
+        const patched = content.replace(
+          /(<span class="msg-sender" style="color: \$\{senderColor\}">)/g,
+          `<span class="msg-sender" title="\${escapeHtml(msg.sender)}" style="color: \${senderColor}">`,
+        );
+        if (patched !== content) {
+          fs.writeFileSync(jsPath, patched + "\n// quadwork#388\n");
+        }
+      }
+    } catch {}
+  }
+}
+
 module.exports = {
   AGENTCHATTR_REPO,
   findAgentChattr,
   installAgentChattr,
   chattrSpawnArgs,
+  patchAgentchattrCss,
 };
