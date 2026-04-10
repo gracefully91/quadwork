@@ -97,7 +97,11 @@ export default function GlobalNotificationListener() {
           const msgs: { id: number; sender: string; type?: string }[] = Array.isArray(data)
             ? data
             : data.messages || [];
-          if (msgs.length === 0) return;
+          if (msgs.length === 0) {
+            // Clear suppress flag so the next poll with real messages chimes.
+            suppressChimeRef.current.delete(project.id);
+            return;
+          }
 
           const prevCursor = cursorsRef.current[project.id] ?? 0;
           const maxId = Math.max(...msgs.map((m) => m.id));
