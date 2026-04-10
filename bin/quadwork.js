@@ -2108,10 +2108,10 @@ async function cmdMigrateAgentSlugs() {
     }
 
     // 5. Rename queue files (reviewer1_queue.jsonl → re1_queue.jsonl)
-    const dataDir = project.agentchattr_dir
-      ? path.join(project.agentchattr_dir, "data")
-      : null;
-    if (dataDir && fs.existsSync(dataDir)) {
+    const acDir = project.agentchattr_dir
+      || path.join(CONFIG_DIR, project.id, "agentchattr");
+    const dataDir = path.join(acDir, "data");
+    if (fs.existsSync(dataDir)) {
       for (const [oldKey, newKey] of Object.entries(SLUG_MAP)) {
         const oldQf = path.join(dataDir, `${oldKey}_queue.jsonl`);
         const newQf = path.join(dataDir, `${newKey}_queue.jsonl`);
