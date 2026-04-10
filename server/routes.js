@@ -3041,6 +3041,25 @@ router.get("/api/discord", async (req, res) => {
       botUsername = project.discord.bot_username || "";
     }
     bridgeInstalled = fs.existsSync(path.join(DISCORD_BRIDGE_DIR, "discord_bridge.py"));
+    // Lazy-resolve bot username via Discord's /users/@me the first time
+    // after a token is saved. Cache it on the project entry so later
+    // requests don't hit the network.
+    if (configured && !botUsername && project?.discord?.bot_token && cfg) {
+      try {
+        const resolved = resolveToken(project.discord.bot_token);
+        if (resolved) {
+          const r = await fetch("https://discord.com/api/v10/users/@me", {
+            headers: { Authorization: `Bot ${resolved}` },
+          });
+          const data = await r.json();
+          if (r.ok && data.username) {
+            botUsername = data.username;
+            project.discord.bot_username = botUsername;
+            try { fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2)); } catch {}
+          }
+        }
+      } catch { /* non-fatal — widget will just show no username */ }
+    }
   } catch {}
   const running = isDiscordRunning(projectId);
   let lastError = "";
