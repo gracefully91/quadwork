@@ -29,23 +29,20 @@ export default function GlobalNotificationListener() {
   const projectsRef = useRef<Project[]>([]);
   // Whether initial config has loaded (skip polling until we know projects).
   const readyRef = useRef(false);
+  // #410 review fix: projects whose first poll should advance the cursor
+  // without chiming. Prevents false notifications for pre-existing messages
+  // while eliminating the async-seed race that could swallow the first real
+  // post-add message.
+  const suppressChimeRef = useRef<Set<string>>(new Set());
 
-  // Seed cursor for a single project (best-effort, non-blocking).
+  // Seed cursor for a single project. Synchronous — sets cursor to 0
+  // immediately so pollAll can start on the next cycle. The first poll
+  // result advances the cursor but suppresses the chime (via
+  // suppressChimeRef) to avoid false notifications for old messages.
   const seedCursor = useCallback((projectId: string) => {
     if (cursorsRef.current[projectId] != null) return; // already seeded
-    fetch(`/api/chat?path=/api/messages&channel=general&cursor=0&project=${encodeURIComponent(projectId)}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (!data) return;
-        const msgs: { id: number }[] = Array.isArray(data) ? data : data.messages || [];
-        if (msgs.length > 0) {
-          cursorsRef.current[projectId] = Math.max(...msgs.map((m) => m.id));
-        } else {
-          // Mark as seeded with 0 so pollAll doesn't skip it.
-          cursorsRef.current[projectId] = 0;
-        }
-      })
-      .catch(() => {});
+    cursorsRef.current[projectId] = 0;
+    suppressChimeRef.current.add(projectId);
   }, []);
 
   // Fetch config to populate/refresh project list + operator name.
@@ -107,6 +104,13 @@ export default function GlobalNotificationListener() {
           if (maxId > prevCursor) cursorsRef.current[project.id] = maxId;
 
           const opName = operatorNameRef.current;
+          // Suppress chime on the first poll after seeding — this batch
+          // contains pre-existing messages, not genuinely new ones.
+          if (suppressChimeRef.current.has(project.id)) {
+            suppressChimeRef.current.delete(project.id);
+            return;
+          }
+
           const hasNewAgentMessage = msgs.some(
             (m) =>
               m.id > prevCursor &&
@@ -122,13 +126,9 @@ export default function GlobalNotificationListener() {
   }, []);
 
   useEffect(() => {
-    // Small delay on first poll to let config + cursor seeding complete.
-    const initial = setTimeout(pollAll, 2000);
+    // Cursor seeding is now synchronous, so no startup delay needed.
     const interval = setInterval(pollAll, 3000);
-    return () => {
-      clearTimeout(initial);
-      clearInterval(interval);
-    };
+    return () => clearInterval(interval);
   }, [pollAll]);
 
   // Invisible — no DOM output.
