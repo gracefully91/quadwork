@@ -888,6 +888,13 @@ async function handleAgentChattr(req, res) {
     if (proc.state === "running" && proc.process) {
       return res.json({ ok: true, state: "running", message: "Already running" });
     }
+    // #393: kill any orphaned process on the port before spawning
+    // (same pattern as restart/stop from #386).
+    killProcessOnPort(chattrPort);
+    const portFree = await waitForPortFree(chattrPort, 3000);
+    if (!portFree) {
+      console.warn(`[agentchattr] ${projectId} port ${chattrPort} still occupied after 3s — spawning anyway`);
+    }
     try {
       const child = spawnChattr();
       if (!child) {
