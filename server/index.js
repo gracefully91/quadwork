@@ -801,6 +801,9 @@ async function handleAgentChattr(req, res) {
 
     // Resolve AgentChattr from its cloned directory
     const { dir: acDir } = resolveProjectChattr(projectId);
+    // #394: backfill sender-overflow CSS/JS patch on every spawn so
+    // existing installs receive the fix without manual update.
+    patchAgentchattrCss(acDir);
     const acSpawn = resolveChattrSpawn(acDir);
     if (!acSpawn) {
       setProc({ process: null, state: "error", error: `AgentChattr not installed. Clone it: git clone https://github.com/bcurts/agentchattr.git ${acDir}` });
