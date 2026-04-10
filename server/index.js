@@ -834,6 +834,54 @@ async function handleAgentChattr(req, res) {
     return child;
   }
 
+  // #386: Kill any process listening on the AC port. Handles orphaned
+  // processes that survive QuadWork restarts (detached + unref'd spawns
+  // lose their tracked reference when the Node process recycles).
+  function killProcessOnPort(port) {
+    try {
+      const pids = execSync(`lsof -ti TCP:${port} -sTCP:LISTEN`, {
+        encoding: "utf-8",
+        timeout: 5000,
+        stdio: ["pipe", "pipe", "pipe"],
+      }).trim();
+      if (!pids) return;
+      for (const line of pids.split("\n")) {
+        const pid = parseInt(line, 10);
+        if (pid > 0) {
+          try { process.kill(pid, "SIGTERM"); } catch {}
+        }
+      }
+    } catch {
+      // lsof exits non-zero when no matching process — expected
+    }
+  }
+
+  // #386: Poll until the port is free or timeout expires.
+  function waitForPortFree(port, timeoutMs = 3000) {
+    const start = Date.now();
+    return new Promise((resolve) => {
+      function check() {
+        try {
+          execSync(`lsof -ti TCP:${port} -sTCP:LISTEN`, {
+            encoding: "utf-8",
+            timeout: 2000,
+            stdio: ["pipe", "pipe", "pipe"],
+          });
+          // Still occupied — retry if within budget
+          if (Date.now() - start < timeoutMs) {
+            setTimeout(check, 200);
+          } else {
+            resolve(false);
+          }
+        } catch {
+          // lsof found nothing — port is free
+          resolve(true);
+        }
+      }
+      check();
+    });
+  }
+
   if (action === "start") {
     const proc = getProc();
     if (proc.state === "running" && proc.process) {
@@ -857,6 +905,8 @@ async function handleAgentChattr(req, res) {
     if (proc.process) {
       try { proc.process.kill("SIGTERM"); } catch {}
     }
+    // #386: also kill any orphaned process holding the port
+    killProcessOnPort(chattrPort);
     setProc({ process: null, state: "stopped", error: null });
     res.json({ ok: true, state: "stopped" });
   } else if (action === "restart") {
@@ -876,46 +926,53 @@ async function handleAgentChattr(req, res) {
     if (proc.process) {
       try { proc.process.kill("SIGTERM"); } catch {}
     }
+    // #386: also kill any orphaned process holding the port (handles
+    // detached processes that survived a QuadWork restart).
+    killProcessOnPort(chattrPort);
     setProc({ process: null, state: "stopped", error: null });
-    setTimeout(() => {
-      try {
-        const child = spawnChattr();
-        if (!child) {
-          const errProc = getProc();
-          return res.status(500).json({ ok: false, state: "error", error: errProc.error || "Failed to start AgentChattr" });
-        }
-        // Sync token after AgentChattr restarts
-        setTimeout(() => syncChattrToken(projectId), 2000);
-        // #424 / quadwork#304 Phase 3: optional auto-restore.
-        // Fire the restore 3s after spawn so AC's ws is ready.
-        // Best-effort: never blocks the restart response or
-        // rolls back on error.
-        if (shouldAutoRestore) {
-          setTimeout(async () => {
-            try {
-              const snapDir = path.join(require("os").homedir(), ".quadwork", projectId, "history-snapshots");
-              if (!fs.existsSync(snapDir)) return;
-              const newest = fs.readdirSync(snapDir)
-                .filter((f) => f.endsWith(".json"))
-                .map((f) => ({ f, t: fs.statSync(path.join(snapDir, f)).mtimeMs }))
-                .sort((a, b) => b.t - a.t)[0];
-              if (!newest) return;
-              const r = await fetch(`http://127.0.0.1:${PORT}/api/project-history/restore?project=${encodeURIComponent(projectId)}&name=${encodeURIComponent(newest.f)}`, {
-                method: "POST",
-              });
-              if (r.ok) console.log(`[snapshot] ${projectId} auto-restored ${newest.f}`);
-              else console.warn(`[snapshot] ${projectId} auto-restore returned ${r.status}`);
-            } catch (err) {
-              console.warn(`[snapshot] ${projectId} auto-restore failed: ${err.message || err}`);
-            }
-          }, 3000);
-        }
-        res.json({ ok: true, state: "running", pid: child.pid });
-      } catch (err) {
-        setProc({ process: null, state: "error", error: err.message });
-        res.status(500).json({ ok: false, state: "error", error: err.message });
+    // #386: wait for the port to actually be free before spawning,
+    // instead of a fixed 500ms that may race the old process.
+    const portFree = await waitForPortFree(chattrPort, 3000);
+    if (!portFree) {
+      console.warn(`[agentchattr] ${projectId} port ${chattrPort} still occupied after 3s — spawning anyway`);
+    }
+    try {
+      const child = spawnChattr();
+      if (!child) {
+        const errProc = getProc();
+        return res.status(500).json({ ok: false, state: "error", error: errProc.error || "Failed to start AgentChattr" });
       }
-    }, 500);
+      // Sync token after AgentChattr restarts
+      setTimeout(() => syncChattrToken(projectId), 2000);
+      // #424 / quadwork#304 Phase 3: optional auto-restore.
+      // Fire the restore 3s after spawn so AC's ws is ready.
+      // Best-effort: never blocks the restart response or
+      // rolls back on error.
+      if (shouldAutoRestore) {
+        setTimeout(async () => {
+          try {
+            const snapDir = path.join(require("os").homedir(), ".quadwork", projectId, "history-snapshots");
+            if (!fs.existsSync(snapDir)) return;
+            const newest = fs.readdirSync(snapDir)
+              .filter((f) => f.endsWith(".json"))
+              .map((f) => ({ f, t: fs.statSync(path.join(snapDir, f)).mtimeMs }))
+              .sort((a, b) => b.t - a.t)[0];
+            if (!newest) return;
+            const r = await fetch(`http://127.0.0.1:${PORT}/api/project-history/restore?project=${encodeURIComponent(projectId)}&name=${encodeURIComponent(newest.f)}`, {
+              method: "POST",
+            });
+            if (r.ok) console.log(`[snapshot] ${projectId} auto-restored ${newest.f}`);
+            else console.warn(`[snapshot] ${projectId} auto-restore returned ${r.status}`);
+          } catch (err) {
+            console.warn(`[snapshot] ${projectId} auto-restore failed: ${err.message || err}`);
+          }
+        }, 3000);
+      }
+      res.json({ ok: true, state: "running", pid: child.pid });
+    } catch (err) {
+      setProc({ process: null, state: "error", error: err.message });
+      res.status(500).json({ ok: false, state: "error", error: err.message });
+    }
   } else if (action === "update") {
     // Update AgentChattr: stop → git pull → pip install → restart
     const { dir: acDir } = resolveProjectChattr(projectId);
@@ -939,9 +996,13 @@ async function handleAgentChattr(req, res) {
       const wasRunning = proc.process && proc.state === "running";
       if (wasRunning) {
         try { proc.process.kill("SIGTERM"); } catch {}
+      }
+      // #386: kill orphaned processes on the port too
+      killProcessOnPort(chattrPort);
+      if (wasRunning) {
         setProc({ process: null, state: "stopped", error: null });
-        // Brief wait for process to release files
-        await new Promise(r => setTimeout(r, 1000));
+        // Wait for the port to be released before pulling/restarting
+        await waitForPortFree(chattrPort, 3000);
       }
 
       const pullResult = execSync("git pull 2>&1", { cwd: acDir, encoding: "utf-8", timeout: 30000 }).trim();
