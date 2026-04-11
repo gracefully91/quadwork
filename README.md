@@ -36,6 +36,19 @@ reviews and branch protection, it allows solo founders and engineers to ship
 code 24/7 through a reliable "Issue → Branch → PR → Merge" loop while
 maintaining high code quality without manual oversight.
 
+### How QuadWork Orchestrates Your Workflow
+
+```
+Issue → Branch → PR → Review × 2 → Merge
+  ↑                                    │
+  └──────── next ticket ───────────────┘
+```
+
+Head creates issues and assigns them to Dev. Dev opens a PR. Reviewer 1
+and Reviewer 2 each review independently — approve, request changes, or
+veto. Dev iterates until both approve. Head merges and picks the next
+ticket. The cycle repeats autonomously until the batch is complete.
+
 ### Core Value Proposition
 
 - **Autonomous Reliability:** Runs overnight batches using a scheduled trigger, so you can wake up to a queue of successfully merged pull requests.
