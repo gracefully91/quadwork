@@ -1574,7 +1574,7 @@ app.use((req, res, next) => {
   // Hydration #418 is cosmetic — dashboard renders and functions correctly.
   // NOTE: app-shell.html does NOT work — it has no route JS chunks and renders blank.
   const dynamicRoutes = [
-    { pattern: /^\/project\/[^/]+\/memory\/?$/, template: "project/_/memory.html" },
+    // #445: memory route removed (agent-memory integration deprecated)
     { pattern: /^\/project\/[^/]+\/queue\/?$/, template: "project/_/queue.html" },
     { pattern: /^\/project\/[^/]+\/?$/, template: "project/_.html" },
   ];
