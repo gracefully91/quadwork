@@ -218,18 +218,19 @@ function ChatPanelAPI({ projectId }: { projectId?: string }) {
   const send = () => {
     const raw = input.trim();
     if (!raw || sending) return;
-    // #228: if the operator didn't tag a known agent, prepend
-    // `@head ` so the message has somewhere to go. Unknown
-    // `@whatever` mentions don't count — Head is still added.
-    // Known agents: head, dev, re1, re2.
+    // #228: if the operator didn't direct the message to a known
+    // agent, prepend `@head ` so the message has somewhere to go.
+    // #426: only check the START of the message — a mention buried
+    // in the body (e.g. "Assign to @dev one at a time") is not a
+    // routing target and still needs the @head prefix.
     //
     // #410 / quadwork#276: slash commands are routed by AgentChattr
     // itself and must NOT be wrapped in `@head /continue` — that
     // would silently break them. Skip the auto-tag when the message
     // starts with `/`.
-    const KNOWN_AGENT_RE = /@(head|dev|re1|re2)\b/i;
+    const STARTS_WITH_AGENT_RE = /^@(head|dev|re1|re2)\b/i;
     const startsWithSlash = raw.startsWith("/");
-    const text = (startsWithSlash || KNOWN_AGENT_RE.test(raw)) ? raw : `@head ${raw}`;
+    const text = (startsWithSlash || STARTS_WITH_AGENT_RE.test(raw)) ? raw : `@head ${raw}`;
     setSending(true);
     setSendError(null);
     fetch(`/api/chat${projectId ? `?project=${encodeURIComponent(projectId)}` : ""}`, {
