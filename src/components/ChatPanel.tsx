@@ -122,6 +122,7 @@ function ChatPanelAPI({ projectId }: { projectId?: string }) {
   // before giving up. Once the first successful fetch completes
   // (messages or genuine empty), retries stop.
   const initialRetryRef = useRef(0);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const MAX_INITIAL_RETRIES = 3;
   const INITIAL_RETRY_DELAY_MS = 2000;
   const [showMentions, setShowMentions] = useState(false);
@@ -157,6 +158,7 @@ function ChatPanelAPI({ projectId }: { projectId?: string }) {
     setMessages([]);
     setLoaded(false);
     initialRetryRef.current = 0;
+    if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
   }, [projectId]);
 
   // Poll messages via proxy
@@ -197,7 +199,7 @@ function ChatPanelAPI({ projectId }: { projectId?: string }) {
         // already has messages and the next 3s poll will retry.
         if (!loaded && initialRetryRef.current < MAX_INITIAL_RETRIES) {
           initialRetryRef.current += 1;
-          setTimeout(fetchMessages, INITIAL_RETRY_DELAY_MS);
+          retryTimerRef.current = setTimeout(fetchMessages, INITIAL_RETRY_DELAY_MS);
         }
       });
   }, [channel, projectId, loaded]);
@@ -205,7 +207,10 @@ function ChatPanelAPI({ projectId }: { projectId?: string }) {
   useEffect(() => {
     fetchMessages();
     const interval = setInterval(fetchMessages, 3000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
+    };
   }, [fetchMessages]);
 
   // Auto-scroll
