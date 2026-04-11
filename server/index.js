@@ -1848,68 +1848,22 @@ async function acHealthCheck() {
 
     console.warn(`[health] AC for ${project.id} on port ${port} is down (failure ${health.consecutiveFailures}/3) — auto-restarting`);
 
+    // Call the existing restart endpoint internally so we reuse the
+    // hardened path (killProcessOnPort, waitForPortFree, snapshot,
+    // auto-restore) instead of reimplementing spawn logic inline.
     try {
-      // Reuse the same restart logic as the /api/agentchattr/:id/restart endpoint
-      if (proc.process) {
-        try { proc.process.kill("SIGTERM"); } catch {}
-      }
-      chattrProcesses.set(project.id, { process: null, state: "stopped", error: null });
-
-      // Resolve and spawn — inline version of spawnChattr from the route closure
-      const { dir: acDir } = resolveProjectChattr(project.id);
-      const acSpawn = resolveChattrSpawn(acDir);
-      if (!acSpawn) {
-        console.error(`[health] AC for ${project.id} — not installed, cannot auto-restart`);
-        chattrProcesses.set(project.id, { process: null, state: "error", error: "AgentChattr not installed" });
-        health.consecutiveFailures = 3; // give up
-        continue;
-      }
-
-      // Find config.toml for the project
-      let projectConfigToml = null;
-      const perProjectAcDir = path.join(os.homedir(), ".quadwork", project.id, "agentchattr");
-      if (fs.existsSync(path.join(perProjectAcDir, "config.toml"))) {
-        projectConfigToml = path.join(perProjectAcDir, "config.toml");
-      } else if (fs.existsSync(path.join(acDir, "config.toml"))) {
-        projectConfigToml = path.join(acDir, "config.toml");
-      } else if (project.working_dir) {
-        const legacyToml = path.join(project.working_dir, "agentchattr", "config.toml");
-        if (fs.existsSync(legacyToml)) projectConfigToml = legacyToml;
-      }
-
-      const extraArgs = projectConfigToml
-        ? ["--config", projectConfigToml]
-        : ["--port", String(port)];
-
-      patchAgentchattrCss(acDir);
-      const child = spawn(acSpawn.command, [...acSpawn.args, ...extraArgs], {
-        cwd: acSpawn.cwd,
-        env: process.env,
-        stdio: "ignore",
-        detached: true,
+      const resp = await fetch(`http://127.0.0.1:${PORT}/api/agentchattr/${encodeURIComponent(project.id)}/restart`, {
+        method: "POST",
+        timeout: 15000,
       });
-
-      if (!child.pid) {
-        console.error(`[health] AC for ${project.id} — spawn failed`);
-        chattrProcesses.set(project.id, { process: null, state: "error", error: "Auto-restart spawn failed" });
-        continue;
+      if (resp.ok) {
+        const data = await resp.json();
+        console.log(`[health] AC for ${project.id} auto-restarted (PID: ${data.pid})`);
+      } else {
+        const body = await resp.text().catch(() => "");
+        console.error(`[health] AC auto-restart failed for ${project.id}: ${resp.status} ${body.slice(0, 120)}`);
+        chattrProcesses.set(project.id, { process: null, state: "error", error: `Auto-restart failed: ${resp.status}` });
       }
-
-      child.unref();
-      child.on("error", (err) => {
-        chattrProcesses.set(project.id, { process: null, state: "error", error: err.message });
-      });
-      child.on("exit", (code) => {
-        const cur = chattrProcesses.get(project.id);
-        if (cur && cur.process === child) {
-          chattrProcesses.set(project.id, { process: null, state: "stopped", error: code ? `exit:${code}` : null });
-        }
-      });
-      chattrProcesses.set(project.id, { process: child, state: "running", error: null });
-      console.log(`[health] AC for ${project.id} auto-restarted (PID: ${child.pid})`);
-
-      // Sync token after restart
-      setTimeout(() => syncChattrToken(project.id), 2000);
     } catch (err) {
       console.error(`[health] AC auto-restart failed for ${project.id}:`, err.message);
       chattrProcesses.set(project.id, { process: null, state: "error", error: `Auto-restart failed: ${err.message}` });
