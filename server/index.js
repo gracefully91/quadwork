@@ -1859,6 +1859,19 @@ async function acHealthCheck() {
       if (resp.ok) {
         const data = await resp.json();
         console.log(`[health] AC for ${project.id} auto-restarted (PID: ${data.pid})`);
+        // #417/#416: also reset agents so they get fresh MCP tokens,
+        // same as the manual SERVER Restart button chain.
+        try {
+          const resetResp = await fetch(`http://127.0.0.1:${PORT}/api/agents/${encodeURIComponent(project.id)}/reset`, {
+            method: "POST",
+          });
+          if (resetResp.ok) {
+            const resetData = await resetResp.json();
+            console.log(`[health] ${resetData.restarted} agent(s) reset for ${project.id}`);
+          }
+        } catch (resetErr) {
+          console.warn(`[health] Agent reset after AC auto-restart failed for ${project.id}:`, resetErr.message);
+        }
       } else {
         const body = await resp.text().catch(() => "");
         console.error(`[health] AC auto-restart failed for ${project.id}: ${resp.status} ${body.slice(0, 120)}`);
