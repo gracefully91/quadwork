@@ -1089,32 +1089,41 @@ app.post("/api/agentchattr/:projectOrAction", handleAgentChattr);
 app.post("/api/agents/:project/reset", async (req, res) => {
   const projectId = req.params.project;
 
-  // #417: Reset Agents now stops and respawns all running agent
-  // sessions for the project. The old implementation only deregistered
-  // AC slots, which fails with stale tokens after an AC crash and
-  // doesn't restart the agent processes (leaving them with broken MCP).
+  // #417: Reset Agents now stops and respawns all agent sessions for
+  // the project. Uses the configured agent list from config.json so
+  // agents missing from agentSessions (e.g. after a crash or prior
+  // stop) are still brought back. The old implementation only
+  // deregistered AC slots, which fails with stale tokens after an AC
+  // crash and doesn't restart the agent processes.
   try {
-    // Find all sessions belonging to this project
-    const projectAgents = [];
-    for (const [key, session] of agentSessions) {
+    // Build the full agent set: start with configured agents, then
+    // merge any tracked sessions that might use a different key.
+    const cfg = readConfig();
+    const project = cfg.projects?.find((p) => p.id === projectId);
+    const configuredAgents = project?.agents ? Object.keys(project.agents) : [];
+
+    // Also include any live sessions not in the config (defensive)
+    const sessionAgentIds = new Set();
+    for (const [key] of agentSessions) {
       if (key.startsWith(`${projectId}/`)) {
-        projectAgents.push({ key, agentId: session.agentId || key.split("/")[1] });
+        sessionAgentIds.add(key.split("/")[1]);
       }
     }
+    const allAgentIds = [...new Set([...configuredAgents, ...sessionAgentIds])];
 
-    if (projectAgents.length === 0) {
-      return res.json({ ok: true, restarted: 0, total: 0, message: "No agent sessions found" });
+    if (allAgentIds.length === 0) {
+      return res.json({ ok: true, restarted: 0, total: 0, message: "No agents configured" });
     }
 
     // Stop all agents first (handles deregistration best-effort)
-    for (const { key } of projectAgents) {
-      await stopAgentSession(key);
+    for (const agentId of allAgentIds) {
+      await stopAgentSession(`${projectId}/${agentId}`);
     }
 
     // Respawn all agents with fresh MCP tokens
     let restarted = 0;
     const errors = [];
-    for (const { key, agentId } of projectAgents) {
+    for (const agentId of allAgentIds) {
       const result = await spawnAgentPty(projectId, agentId);
       if (result.ok) {
         restarted++;
@@ -1126,7 +1135,7 @@ app.post("/api/agents/:project/reset", async (req, res) => {
     res.json({
       ok: restarted > 0,
       restarted,
-      total: projectAgents.length,
+      total: allAgentIds.length,
       ...(errors.length > 0 ? { errors } : {}),
     });
   } catch (err) {
