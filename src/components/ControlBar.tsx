@@ -220,7 +220,6 @@ function SystemSection({ projectId }: { projectId: string }) {
   const [awakeAuto, setAwakeAuto] = useState(false);
   const [awakeAutoStatus, setAwakeAutoStatus] = useState<string | null>(null);
   const awakeAutoRef = useRef(false);
-  const awakeAutoLoadedRef = useRef(false);
   const prevBatchRef = useRef<{ complete: boolean; hasItems: boolean } | null>(null);
   // Track manual stop so auto doesn't re-start until next batch transition
   const manualStopRef = useRef(false);
@@ -313,16 +312,20 @@ function SystemSection({ projectId }: { projectId: string }) {
       .catch(() => {});
   };
 
-  // #441: Auto toggle — load persisted state from config
+  // #441: Auto toggle — load persisted state from config.
+  // Reset all auto state on project switch so stale refs from the
+  // previous project don't leak.
   useEffect(() => {
-    if (awakeAutoLoadedRef.current) return;
+    setAwakeAuto(false);
+    setAwakeAutoStatus(null);
+    prevBatchRef.current = null;
+    manualStopRef.current = false;
     fetch("/api/config")
       .then((r) => (r.ok ? r.json() : null))
       .then((cfg) => {
         if (!cfg) return;
         const entry = (cfg.projects || []).find((p: { id: string }) => p.id === projectId);
         if (entry?.awake_auto) setAwakeAuto(true);
-        awakeAutoLoadedRef.current = true;
       })
       .catch(() => {});
   }, [projectId]);
