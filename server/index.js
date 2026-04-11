@@ -1088,33 +1088,47 @@ app.post("/api/agentchattr/:projectOrAction", handleAgentChattr);
 
 app.post("/api/agents/:project/reset", async (req, res) => {
   const projectId = req.params.project;
-  const { url: chattrUrl, token: chattrToken } = resolveProjectChattr(projectId);
-  const headers = {};
-  if (chattrToken) headers["x-session-token"] = chattrToken;
 
+  // #417: Reset Agents now stops and respawns all running agent
+  // sessions for the project. The old implementation only deregistered
+  // AC slots, which fails with stale tokens after an AC crash and
+  // doesn't restart the agent processes (leaving them with broken MCP).
   try {
-    // Fetch current agent status from AgentChattr
-    const statusRes = await fetch(`${chattrUrl}/api/status`, { headers });
-    if (!statusRes.ok) {
-      return res.status(statusRes.status).json({ ok: false, error: `AgentChattr status failed: ${statusRes.status}` });
-    }
-    const status = await statusRes.json();
-    const slots = status.agents || status.slots || [];
-
-    let cleared = 0;
-    for (const agent of slots) {
-      const name = typeof agent === "string" ? agent : agent.name || agent.sender;
-      if (!name) continue;
-      try {
-        const dereg = await fetch(`${chattrUrl}/api/deregister/${encodeURIComponent(name)}`, {
-          method: "POST",
-          headers,
-        });
-        if (dereg.ok) cleared++;
-      } catch {}
+    // Find all sessions belonging to this project
+    const projectAgents = [];
+    for (const [key, session] of agentSessions) {
+      if (key.startsWith(`${projectId}/`)) {
+        projectAgents.push({ key, agentId: session.agentId || key.split("/")[1] });
+      }
     }
 
-    res.json({ ok: true, cleared, total: slots.length });
+    if (projectAgents.length === 0) {
+      return res.json({ ok: true, restarted: 0, total: 0, message: "No agent sessions found" });
+    }
+
+    // Stop all agents first (handles deregistration best-effort)
+    for (const { key } of projectAgents) {
+      await stopAgentSession(key);
+    }
+
+    // Respawn all agents with fresh MCP tokens
+    let restarted = 0;
+    const errors = [];
+    for (const { key, agentId } of projectAgents) {
+      const result = await spawnAgentPty(projectId, agentId);
+      if (result.ok) {
+        restarted++;
+      } else {
+        errors.push(`${agentId}: ${result.error}`);
+      }
+    }
+
+    res.json({
+      ok: restarted > 0,
+      restarted,
+      total: projectAgents.length,
+      ...(errors.length > 0 ? { errors } : {}),
+    });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
