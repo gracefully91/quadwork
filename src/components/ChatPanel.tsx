@@ -112,8 +112,18 @@ function ChatPanelAPI({ projectId }: { projectId?: string }) {
   const [messages, setMessages] = useState<Message[]>([]);
   // #410: track whether the initial fetch has completed so we don't
   // flash the welcome/empty state while messages are still loading.
+  // #436: only set loaded after a SUCCESSFUL fetch — errors during
+  // startup must not flip this flag or the welcome screen appears
+  // over existing messages that haven't been fetched yet.
   const [loaded, setLoaded] = useState(false);
   const [input, setInput] = useState("");
+  // #436: retry counter for the initial fetch. On startup AC may not
+  // be ready for 2-3 seconds; we retry up to 3 times (2s apart)
+  // before giving up. Once the first successful fetch completes
+  // (messages or genuine empty), retries stop.
+  const initialRetryRef = useRef(0);
+  const MAX_INITIAL_RETRIES = 3;
+  const INITIAL_RETRY_DELAY_MS = 2000;
   const [showMentions, setShowMentions] = useState(false);
   const [mentionFilter, setMentionFilter] = useState("");
   // #410 / quadwork#276: slash command autocomplete menu state.
@@ -146,6 +156,7 @@ function ChatPanelAPI({ projectId }: { projectId?: string }) {
     cursorRef.current = 0;
     setMessages([]);
     setLoaded(false);
+    initialRetryRef.current = 0;
   }, [projectId]);
 
   // Poll messages via proxy
@@ -173,10 +184,23 @@ function ChatPanelAPI({ projectId }: { projectId?: string }) {
           const maxId = Math.max(...msgs.map((m) => m.id));
           if (maxId > cursorRef.current) cursorRef.current = maxId;
         }
+        // #436: only mark loaded after a successful fetch. This is
+        // the ONLY place `loaded` flips to true — error paths below
+        // leave it false so the component shows "Loading messages..."
+        // instead of the welcome screen while retries are pending.
+        setLoaded(true);
       })
-      .catch(() => {})
-      .finally(() => { setLoaded(true); });
-  }, [channel, projectId]);
+      .catch(() => {
+        // #436: if the initial load hasn't succeeded yet, schedule a
+        // retry after a delay. Once loaded is true (first success),
+        // failures in subsequent polls are harmless — the component
+        // already has messages and the next 3s poll will retry.
+        if (!loaded && initialRetryRef.current < MAX_INITIAL_RETRIES) {
+          initialRetryRef.current += 1;
+          setTimeout(fetchMessages, INITIAL_RETRY_DELAY_MS);
+        }
+      });
+  }, [channel, projectId, loaded]);
 
   useEffect(() => {
     fetchMessages();
