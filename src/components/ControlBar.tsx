@@ -60,7 +60,24 @@ function ServerSection({ projectId }: { projectId: string }) {
       );
       const d = await r.json();
       if (d.ok && d.pid) {
-        setFeedback(`Restarted (PID: ${d.pid})`);
+        setFeedback(`AC restarted (PID: ${d.pid}) — resetting agents...`);
+        // #417: After AC restart, also reset all agents so they get
+        // fresh MCP tokens. Without this, agents stay stuck with stale
+        // connections from the pre-restart session.
+        try {
+          const resetRes = await fetch(
+            `/api/agents/${encodeURIComponent(projectId)}/reset`,
+            { method: "POST" }
+          );
+          const resetData = await resetRes.json();
+          if (resetData.ok) {
+            setFeedback(`AC + ${resetData.restarted} agent${resetData.restarted !== 1 ? "s" : ""} restarted`);
+          } else {
+            setFeedback(`AC restarted — agent reset failed`);
+          }
+        } catch {
+          setFeedback(`AC restarted — agent reset failed`);
+        }
       } else {
         setFeedback(d.error || "Failed to restart");
       }
@@ -80,7 +97,7 @@ function ServerSection({ projectId }: { projectId: string }) {
       );
       const d = await r.json();
       setFeedback(
-        d.ok ? `Reset — ${d.cleared} of ${d.total} slot${d.total !== 1 ? "s" : ""} deregistered` : "Failed"
+        d.ok ? `Reset — ${d.restarted} of ${d.total} agent${d.total !== 1 ? "s" : ""} restarted` : (d.error || "Failed")
       );
     } catch {
       setFeedback("Error");

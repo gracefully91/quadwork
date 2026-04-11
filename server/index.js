@@ -1088,33 +1088,56 @@ app.post("/api/agentchattr/:projectOrAction", handleAgentChattr);
 
 app.post("/api/agents/:project/reset", async (req, res) => {
   const projectId = req.params.project;
-  const { url: chattrUrl, token: chattrToken } = resolveProjectChattr(projectId);
-  const headers = {};
-  if (chattrToken) headers["x-session-token"] = chattrToken;
 
+  // #417: Reset Agents now stops and respawns all agent sessions for
+  // the project. Uses the configured agent list from config.json so
+  // agents missing from agentSessions (e.g. after a crash or prior
+  // stop) are still brought back. The old implementation only
+  // deregistered AC slots, which fails with stale tokens after an AC
+  // crash and doesn't restart the agent processes.
   try {
-    // Fetch current agent status from AgentChattr
-    const statusRes = await fetch(`${chattrUrl}/api/status`, { headers });
-    if (!statusRes.ok) {
-      return res.status(statusRes.status).json({ ok: false, error: `AgentChattr status failed: ${statusRes.status}` });
-    }
-    const status = await statusRes.json();
-    const slots = status.agents || status.slots || [];
+    // Build the full agent set: start with configured agents, then
+    // merge any tracked sessions that might use a different key.
+    const cfg = readConfig();
+    const project = cfg.projects?.find((p) => p.id === projectId);
+    const configuredAgents = project?.agents ? Object.keys(project.agents) : [];
 
-    let cleared = 0;
-    for (const agent of slots) {
-      const name = typeof agent === "string" ? agent : agent.name || agent.sender;
-      if (!name) continue;
-      try {
-        const dereg = await fetch(`${chattrUrl}/api/deregister/${encodeURIComponent(name)}`, {
-          method: "POST",
-          headers,
-        });
-        if (dereg.ok) cleared++;
-      } catch {}
+    // Also include any live sessions not in the config (defensive)
+    const sessionAgentIds = new Set();
+    for (const [key] of agentSessions) {
+      if (key.startsWith(`${projectId}/`)) {
+        sessionAgentIds.add(key.split("/")[1]);
+      }
+    }
+    const allAgentIds = [...new Set([...configuredAgents, ...sessionAgentIds])];
+
+    if (allAgentIds.length === 0) {
+      return res.json({ ok: true, restarted: 0, total: 0, message: "No agents configured" });
     }
 
-    res.json({ ok: true, cleared, total: slots.length });
+    // Stop all agents first (handles deregistration best-effort)
+    for (const agentId of allAgentIds) {
+      await stopAgentSession(`${projectId}/${agentId}`);
+    }
+
+    // Respawn all agents with fresh MCP tokens
+    let restarted = 0;
+    const errors = [];
+    for (const agentId of allAgentIds) {
+      const result = await spawnAgentPty(projectId, agentId);
+      if (result.ok) {
+        restarted++;
+      } else {
+        errors.push(`${agentId}: ${result.error}`);
+      }
+    }
+
+    res.json({
+      ok: restarted > 0,
+      restarted,
+      total: allAgentIds.length,
+      ...(errors.length > 0 ? { errors } : {}),
+    });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
