@@ -90,82 +90,19 @@ function renderMessageWithMentions(text: string): React.ReactNode[] {
 }
 
 /**
- * Tries iframe first (uses AgentChattr's own session auth).
- * Falls back to API polling if iframe fails to load.
+ * #415: Use the API-driven chat panel directly. The earlier iframe
+ * approach embedded AC's own web UI but its internal chat.js has its
+ * own empty-state / welcome screen that QuadWork can't control,
+ * causing "Ready when you are" to persist over existing messages.
+ * The API panel (ChatPanelAPI) has full feature parity — mentions,
+ * slash commands, replies, auto-scroll, IME — and correctly gates
+ * the welcome screen behind the initial history fetch (#410).
  */
 interface ChatPanelProps {
   projectId?: string;
 }
 
 export default function ChatPanel({ projectId }: ChatPanelProps) {
-  const [mode, setMode] = useState<"iframe" | "api" | "loading">("loading");
-  const [chattrUrl, setChattrUrl] = useState("");
-  const [chattrToken, setChattrToken] = useState("");
-
-  // Resolve AgentChattr URL and token from per-project config (fallback to global)
-  useEffect(() => {
-    fetch("/api/config")
-      .then((r) => {
-        if (!r.ok) throw new Error("config fetch failed");
-        return r.json();
-      })
-      .then((cfg) => {
-        const project = projectId ? cfg.projects?.find((p: { id: string }) => p.id === projectId) : null;
-        setChattrUrl(project?.agentchattr_url || cfg.agentchattr_url || "http://127.0.0.1:8300");
-        setChattrToken(project?.agentchattr_token || cfg.agentchattr_token || "");
-      })
-      .catch(() => setChattrUrl("http://127.0.0.1:8300"));
-  }, [projectId]);
-
-  // Timeout fallback: if iframe hasn't loaded within 3s, switch to API mode
-  // (onError doesn't fire for CSP/X-Frame-Options blocks)
-  useEffect(() => {
-    if (mode !== "loading") return;
-    const timer = setTimeout(() => {
-      setMode((prev) => (prev === "loading" ? "api" : prev));
-    }, 3000);
-    return () => clearTimeout(timer);
-  }, [mode]);
-
-  if (!chattrUrl) return null;
-
-  if (mode === "loading" || mode === "iframe") {
-    return (
-      <div className="w-full h-full">
-        <iframe
-          ref={(el) => {
-            if (!el) return;
-            el.onload = () => {
-              // onLoad fires even for CSP/X-Frame-Options blocks.
-              // Try accessing contentDocument — blocked iframes throw.
-              try {
-                const doc = el.contentDocument || el.contentWindow?.document;
-                if (doc && doc.body && doc.body.innerHTML.length > 0) {
-                  setMode("iframe");
-                } else {
-                  setMode("api");
-                }
-              } catch {
-                // Cross-origin or blocked — fall back to API
-                setMode("api");
-              }
-            };
-            el.onerror = () => setMode("api");
-          }}
-          src={chattrToken ? `${chattrUrl}?token=${encodeURIComponent(chattrToken)}` : chattrUrl}
-          className="w-full h-full border-0"
-          style={{ display: mode === "loading" ? "none" : "block" }}
-          sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
-        />
-        {mode === "loading" && (
-          <div className="w-full h-full flex items-center justify-center">
-            <span className="text-xs text-text-muted">Connecting to AgentChattr...</span>
-          </div>
-        )}
-      </div>
-    );
-  }
-
   return <ChatPanelAPI projectId={projectId} />;
 }
 
