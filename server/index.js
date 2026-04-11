@@ -1086,6 +1086,23 @@ app.post("/api/agentchattr/:projectOrAction", handleAgentChattr);
 // AgentChattr doesn't expose staleness metadata, so this clears all slots.
 // Agents' wrapper heartbeat will auto-re-register with clean names.
 
+// #416: AC health status endpoint — returns the health monitor state
+// for a project so the dashboard can surface auto-restart events.
+app.get("/api/agentchattr/:project/health", (req, res) => {
+  const projectId = req.params.project;
+  const proc = chattrProcesses.get(projectId);
+  const health = _acHealth.state.get(projectId) || { lastRestart: 0, consecutiveFailures: 0 };
+  res.json({
+    state: proc?.state || "unknown",
+    error: proc?.error || null,
+    autoRestart: {
+      lastRestart: health.lastRestart || null,
+      consecutiveFailures: health.consecutiveFailures,
+      gaveUp: health.consecutiveFailures >= 3,
+    },
+  });
+});
+
 app.post("/api/agents/:project/reset", async (req, res) => {
   const projectId = req.params.project;
 
@@ -1763,6 +1780,116 @@ setInterval(runLoopGuardPollingTick, LOOP_GUARD_POLL_INTERVAL_MS);
 
 // --- Start ---
 
+// ---------------------------------------------------------------------------
+// #416: AC health monitor — auto-restart AgentChattr on crash detection.
+// Runs a TCP connect probe every 30s for each project with a "running" AC
+// process. If the port is dead, auto-restarts (reusing the existing restart
+// logic). Rate-limited to one restart per 60s per project; gives up after
+// 3 consecutive failures and surfaces a persistent error.
+// ---------------------------------------------------------------------------
+const _acHealth = {
+  // Per-project: { lastRestart: timestamp, consecutiveFailures: number }
+  state: new Map(),
+  intervalHandle: null,
+};
+
+function isPortAlive(port) {
+  return new Promise((resolve) => {
+    const sock = net.createConnection({ port, host: "127.0.0.1" }, () => {
+      sock.destroy();
+      resolve(true);
+    });
+    sock.on("error", () => resolve(false));
+    sock.setTimeout(2000, () => { sock.destroy(); resolve(false); });
+  });
+}
+
+async function acHealthCheck() {
+  const cfg = readConfig();
+  for (const project of (cfg.projects || [])) {
+    const proc = chattrProcesses.get(project.id);
+    // Only monitor projects that were explicitly started (state === "running"
+    // or had a process). Skip intentionally stopped projects.
+    if (!proc || proc.state === "stopped") continue;
+
+    const { url } = resolveProjectChattr(project.id);
+    const portMatch = url.match(/:(\d+)/);
+    const port = portMatch ? parseInt(portMatch[1], 10) : 8300;
+
+    const alive = await isPortAlive(port);
+    const health = _acHealth.state.get(project.id) || { lastRestart: 0, consecutiveFailures: 0 };
+
+    if (alive) {
+      // Healthy — reset failure counter
+      if (health.consecutiveFailures > 0) {
+        console.log(`[health] AC for ${project.id} recovered (port ${port} alive)`);
+      }
+      health.consecutiveFailures = 0;
+      _acHealth.state.set(project.id, health);
+      continue;
+    }
+
+    // Port is dead — check rate limits
+    if (health.consecutiveFailures >= 3) {
+      // Already gave up — don't spam restarts. The error state persists
+      // in chattrProcesses for the dashboard to surface.
+      continue;
+    }
+
+    const now = Date.now();
+    if (now - health.lastRestart < 60_000) {
+      // Too soon since last restart attempt
+      continue;
+    }
+
+    health.consecutiveFailures++;
+    health.lastRestart = now;
+    _acHealth.state.set(project.id, health);
+
+    console.warn(`[health] AC for ${project.id} on port ${port} is down (failure ${health.consecutiveFailures}/3) — auto-restarting`);
+
+    // Call the existing restart endpoint internally so we reuse the
+    // hardened path (killProcessOnPort, waitForPortFree, snapshot,
+    // auto-restore) instead of reimplementing spawn logic inline.
+    try {
+      const resp = await fetch(`http://127.0.0.1:${PORT}/api/agentchattr/${encodeURIComponent(project.id)}/restart`, {
+        method: "POST",
+        timeout: 15000,
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        console.log(`[health] AC for ${project.id} auto-restarted (PID: ${data.pid})`);
+        // #417/#416: also reset agents so they get fresh MCP tokens,
+        // same as the manual SERVER Restart button chain.
+        try {
+          const resetResp = await fetch(`http://127.0.0.1:${PORT}/api/agents/${encodeURIComponent(project.id)}/reset`, {
+            method: "POST",
+          });
+          if (resetResp.ok) {
+            const resetData = await resetResp.json();
+            console.log(`[health] ${resetData.restarted} agent(s) reset for ${project.id}`);
+          }
+        } catch (resetErr) {
+          console.warn(`[health] Agent reset after AC auto-restart failed for ${project.id}:`, resetErr.message);
+        }
+      } else {
+        const body = await resp.text().catch(() => "");
+        console.error(`[health] AC auto-restart failed for ${project.id}: ${resp.status} ${body.slice(0, 120)}`);
+        chattrProcesses.set(project.id, { process: null, state: "error", error: `Auto-restart failed: ${resp.status}` });
+      }
+    } catch (err) {
+      console.error(`[health] AC auto-restart failed for ${project.id}:`, err.message);
+      chattrProcesses.set(project.id, { process: null, state: "error", error: `Auto-restart failed: ${err.message}` });
+    }
+  }
+}
+
+function startAcHealthMonitor() {
+  if (_acHealth.intervalHandle) return;
+  _acHealth.intervalHandle = setInterval(acHealthCheck, 30_000);
+  console.log("[health] AC health monitor started (30s interval)");
+}
+
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`QuadWork server listening on http://127.0.0.1:${PORT}`);
   syncTriggersFromConfig();
@@ -1775,6 +1902,8 @@ server.listen(PORT, "127.0.0.1", () => {
     const { dir: acDir } = resolveProjectChattr(p.id);
     if (acDir) patchAgentchattrCss(acDir);
   }
+  // #416: start the AC health monitor
+  startAcHealthMonitor();
 });
 
 /**
