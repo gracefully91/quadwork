@@ -3,6 +3,11 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import ProjectChatEmptyState from "./ProjectChatEmptyState";
 
+interface Attachment {
+  path: string;
+  name: string;
+}
+
 interface Message {
   id: number;
   sender: string;
@@ -10,6 +15,7 @@ interface Message {
   time: string;
   channel: string;
   type?: string;
+  attachments?: Attachment[];
 }
 
 const SENDER_COLORS: Record<string, string> = {
@@ -229,6 +235,35 @@ function ChatPanelAPI({ projectId }: { projectId?: string }) {
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
 
+  // #466: image attachments — pending uploads for the current message
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const uploadFile = async (file: File) => {
+    if (uploading || !projectId) return;
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const r = await fetch(`/api/upload?project=${encodeURIComponent(projectId)}`, {
+        method: "POST",
+        body: form,
+      });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({ error: `${r.status}` }));
+        setSendError(data.error || `Upload failed: ${r.status}`);
+        return;
+      }
+      const data = await r.json();
+      setAttachments((prev) => [...prev, { path: data.path, name: data.name }]);
+    } catch (err) {
+      setSendError((err as Error).message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   // #344: auto-grow the chat textarea to fit its content up to
   // ~6 lines, then scroll internally. Reset to 'auto' first so
   // shrinking after a deletion works — reading scrollHeight on a
@@ -246,7 +281,7 @@ function ChatPanelAPI({ projectId }: { projectId?: string }) {
   // Send message
   const send = () => {
     const raw = input.trim();
-    if (!raw || sending) return;
+    if ((!raw && attachments.length === 0) || sending) return;
     // #228: if the operator didn't direct the message to a known
     // agent, prepend `@head ` so the message has somewhere to go.
     // #426: only check the START of the message — a mention buried
@@ -269,12 +304,14 @@ function ChatPanelAPI({ projectId }: { projectId?: string }) {
         text,
         channel,
         sender: "user",
+        ...(attachments.length > 0 ? { attachments } : {}),
         ...(replyTo ? { reply_to: replyTo.id } : {}),
       }),
     })
       .then((r) => {
         if (!r.ok) throw new Error(`Send failed: ${r.status}`);
         setInput("");
+        setAttachments([]);
         setReplyTo(null);
         setTimeout(fetchMessages, 300);
       })
@@ -377,6 +414,24 @@ function ChatPanelAPI({ projectId }: { projectId?: string }) {
             </span>
             <span className="text-text break-words min-w-0 whitespace-pre-wrap flex-1">
               {renderMessageWithMentions(msg.text)}
+              {msg.attachments && msg.attachments.length > 0 && (
+                <span className="flex gap-2 mt-1">
+                  {msg.attachments.map((att) => (
+                    <a
+                      key={att.name}
+                      href={`/api/uploads/${encodeURIComponent(projectId || "")}/${encodeURIComponent(att.name)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <img
+                        src={`/api/uploads/${encodeURIComponent(projectId || "")}/${encodeURIComponent(att.name)}`}
+                        alt={att.name}
+                        className="max-w-[200px] max-h-[150px] object-cover border border-border rounded hover:border-accent transition-colors"
+                      />
+                    </a>
+                  ))}
+                </span>
+              )}
             </span>
             {/* #397 / quadwork#262: reply affordance — small grey,
                 hover-revealed so it doesn't visually compete with the
@@ -531,20 +586,93 @@ function ChatPanelAPI({ projectId }: { projectId?: string }) {
                 if (replyTo) setReplyTo(null);
               }
             }}
+            onPaste={(e) => {
+              const items = e.clipboardData?.items;
+              if (!items) return;
+              for (const item of Array.from(items)) {
+                if (item.type.startsWith("image/")) {
+                  e.preventDefault();
+                  const file = item.getAsFile();
+                  if (file) uploadFile(file);
+                  return;
+                }
+              }
+            }}
+            onDrop={(e) => {
+              const files = e.dataTransfer?.files;
+              if (!files) return;
+              for (const file of Array.from(files)) {
+                if (file.type.startsWith("image/")) {
+                  e.preventDefault();
+                  uploadFile(file);
+                  return;
+                }
+              }
+            }}
+            onDragOver={(e) => {
+              if (e.dataTransfer?.types?.includes("Files")) e.preventDefault();
+            }}
             placeholder={`Message #${channel}...`}
             disabled={sending}
             className="flex-1 bg-transparent px-2 py-2 text-[12px] font-mono text-text placeholder:text-text-muted outline-none focus:ring-1 focus:ring-accent disabled:opacity-50 resize-none overflow-y-auto leading-snug"
             style={{ maxHeight: 120 }}
           />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/gif,image/webp"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) uploadFile(file);
+              e.target.value = "";
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="shrink-0 px-1.5 py-2 text-[13px] text-text-muted hover:text-accent transition-colors disabled:opacity-30"
+            title="Attach image"
+          >
+            📎
+          </button>
           <button
             onClick={send}
-            disabled={sending || !input.trim()}
+            disabled={sending || (!input.trim() && attachments.length === 0)}
             className="shrink-0 px-2 py-2 text-[11px] font-mono text-accent border border-accent/40 rounded hover:bg-accent/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             title="Send (Enter)"
           >
             {sending ? "…" : "Send"}
           </button>
         </div>
+        {/* #466: attachment thumbnail previews */}
+        {(attachments.length > 0 || uploading) && (
+          <div className="flex gap-2 px-2 py-1 flex-wrap">
+            {attachments.map((att, i) => (
+              <div key={att.name} className="relative group">
+                <img
+                  src={`/api/uploads/${encodeURIComponent(projectId || "")}/${encodeURIComponent(att.name)}`}
+                  alt={att.name}
+                  className="h-16 max-w-[200px] object-cover border border-border rounded"
+                />
+                <button
+                  type="button"
+                  onClick={() => setAttachments((prev) => prev.filter((_, j) => j !== i))}
+                  className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-bg border border-border rounded-full text-[10px] text-text-muted hover:text-error opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                  title="Remove"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+            {uploading && (
+              <div className="h-16 w-16 border border-border rounded flex items-center justify-center">
+                <span className="text-[10px] text-text-muted animate-pulse">...</span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

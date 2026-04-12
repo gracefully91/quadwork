@@ -41,7 +41,7 @@ const POLL_INTERVAL_MS = 1000;
  * `dev`, `head`, `re1`, `re2`. The helper does not
  * validate — upstream already controls who may register.
  */
-function buildInjectionPrompt(agentName, { channel, jobId, customPrompt } = {}) {
+function buildInjectionPrompt(agentName, { channel, jobId, customPrompt, attachments } = {}) {
   if (customPrompt && typeof customPrompt === "string" && customPrompt.trim()) {
     // Operator-supplied prompts already control the identity
     // wording; leave them alone.
@@ -55,12 +55,20 @@ function buildInjectionPrompt(agentName, { channel, jobId, customPrompt } = {}) 
     );
   }
   const ch = channel || "general";
-  return (
+  let prompt =
     `You are @${agentName} in this AgentChattr instance. ` +
     `mcp read #${ch} with sender: "${agentName}" — ` +
     `look for @${agentName} mentions (NOT @claude). ` +
-    `You were mentioned, take appropriate action.`
-  );
+    `You were mentioned, take appropriate action.`;
+  // #466: include attachment paths so image-capable agents can read them
+  if (Array.isArray(attachments) && attachments.length > 0) {
+    for (const att of attachments) {
+      if (att && att.path) {
+        prompt += ` Image attached: ${att.path} — use Read tool to view it.`;
+      }
+    }
+  }
+  return prompt;
 }
 
 /**
