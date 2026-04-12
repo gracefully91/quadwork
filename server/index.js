@@ -1641,11 +1641,9 @@ wss.on("connection", async (ws, req) => {
   // Attach WS to session
   session.ws = ws;
 
-  // #418: replay scrollback buffer so the terminal isn't blank on reconnect.
-  // xterm.js processes ANSI escapes from the buffer the same as live data.
-  if (session.scrollback && session.scrollback.length > 0) {
-    ws.send(session.scrollback);
-  }
+  // #418/#461: scrollback replay is now client-initiated via
+  // {"type":"replay"} to avoid the timing race where eager replay
+  // arrived before the client's onmessage handler was registered.
 
   // PTY → client
   const dataHandler = session.term.onData((data) => {
