@@ -1997,6 +1997,36 @@ server.listen(PORT, "127.0.0.1", () => {
       console.log(`[bridge-migrate] patched stale bridge_sender in ${path.basename(file)}`);
     } catch {}
   }
+  // #479: reseed worktree AGENTS.md files from templates on startup.
+  // Compares each agent's worktree AGENTS.md against the shipped template;
+  // if the template is newer, overwrites the worktree copy so slug changes
+  // and seed improvements propagate automatically.
+  const seedsDir = path.join(OVERNIGHT_TEMPLATES_DIR, "seeds");
+  for (const p of (startupCfg.projects || [])) {
+    if (!p.agents) continue;
+    for (const [agentId, agentCfg] of Object.entries(p.agents)) {
+      const wtDir = agentCfg.cwd;
+      if (!wtDir || !fs.existsSync(wtDir)) continue;
+      const templatePath = path.join(seedsDir, `${agentId}.AGENTS.md`);
+      if (!fs.existsSync(templatePath)) continue;
+      const destPath = path.join(wtDir, "AGENTS.md");
+      try {
+        const tplStat = fs.statSync(templatePath);
+        const destStat = fs.existsSync(destPath) ? fs.statSync(destPath) : null;
+        if (!destStat || tplStat.mtimeMs > destStat.mtimeMs) {
+          let content = fs.readFileSync(templatePath, "utf-8");
+          content = content.replace(/\{\{project_name\}\}/g, p.id);
+          // Clear reviewer placeholders if not applicable
+          content = content.replace(/\{\{reviewer_github_user\}\}/g, "");
+          content = content.replace(/\{\{reviewer_token_path\}\}/g, "");
+          fs.writeFileSync(destPath, content);
+          console.log(`[reseed] ${p.id}/${agentId}: updated AGENTS.md from template`);
+        }
+      } catch (err) {
+        console.warn(`[reseed] ${p.id}/${agentId}: failed to reseed AGENTS.md: ${err.message}`);
+      }
+    }
+  }
   // #416: start the AC health monitor
   startAcHealthMonitor();
 });
