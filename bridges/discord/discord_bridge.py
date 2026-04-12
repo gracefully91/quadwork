@@ -282,9 +282,12 @@ async def poll_ac_to_discord(cfg, channel):
                     sender = msg.get("sender", "")
                     text = msg.get("text", "")
 
-                    # Always advance cursor
+                    # Always advance cursor and persist immediately so a
+                    # crash between messages doesn't replay from a stale
+                    # position (#458).
                     if msg_id > _cursor["last_seen_id"]:
                         _cursor["last_seen_id"] = msg_id
+                        save_cursor(cfg["cursor_file"])
 
                     # Echo prevention: skip our own messages (any name
                     # the bridge has ever registered as this session,
@@ -327,9 +330,6 @@ async def poll_ac_to_discord(cfg, channel):
                             forwarded_ids.update(sorted_ids[len(sorted_ids) // 2:])
                     except Exception as exc:
                         log.error("Failed to send to Discord: %s", exc)
-
-                # Persist cursor after each page
-                save_cursor(cfg["cursor_file"])
 
                 # If we got a full batch, there may be more — drain immediately
                 if len(messages) >= 50:
