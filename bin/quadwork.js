@@ -1050,15 +1050,18 @@ async function setupAddons(rl, setup, configTomlPath) {
       const cloneResult = run(`git clone https://github.com/realproject7/agentchattr-telegram.git "${telegramDir}" 2>&1`);
       cloneSpinner.stop(cloneResult !== null);
       if (!cloneResult) { warn("You can set it up manually later"); }
-      else {
-        // #444: pin to a known commit, same pattern as AGENTCHATTR_PIN
-        const pinResult = run(`git -C "${telegramDir}" checkout -B pinned ${AGENTCHATTR_TELEGRAM_PIN} 2>&1`, { timeout: 30000 });
-        if (pinResult === null) {
-          try { console.warn(`[quadwork] WARNING: could not check out agentchattr-telegram pin ${AGENTCHATTR_TELEGRAM_PIN} at ${telegramDir}; falling back to default branch.`); } catch {}
-        }
-      }
     } else {
       ok("agentchattr-telegram already present");
+    }
+    // #444 / #470: pin to a known commit — on fresh clone AND on
+    // upgrade (existing clone may be on an older pin with stale
+    // bridge_sender defaults).
+    if (fs.existsSync(telegramDir)) {
+      run(`git -C "${telegramDir}" fetch origin 2>&1`, { timeout: 30000 });
+      const pinResult = run(`git -C "${telegramDir}" checkout -B pinned ${AGENTCHATTR_TELEGRAM_PIN} 2>&1`, { timeout: 30000 });
+      if (pinResult === null) {
+        try { console.warn(`[quadwork] WARNING: could not check out agentchattr-telegram pin ${AGENTCHATTR_TELEGRAM_PIN} at ${telegramDir}; falling back to default branch.`); } catch {}
+      }
     }
 
     if (fs.existsSync(telegramDir)) {
