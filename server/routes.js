@@ -8,6 +8,8 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 
+const multer = require("multer");
+
 const router = express.Router();
 
 const CONFIG_DIR = path.join(os.homedir(), ".quadwork");
@@ -989,6 +991,53 @@ router.post("/api/chat", async (req, res) => {
     console.warn(`[chat] send failed for project ${projectId}: ${err && err.message}`);
     return res.status(502).json({ error: "AgentChattr unreachable", detail: err && err.message });
   }
+});
+
+// ─── Image upload (#466) ──────────────────────────────────────────────────
+
+const UPLOAD_MAX_BYTES = 10 * 1024 * 1024; // 10MB
+const ALLOWED_MIME = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+const uploadStorage = multer.diskStorage({
+  destination: (req, _file, cb) => {
+    const projectId = req.query.project || "";
+    if (!projectId || /[/\\]/.test(projectId)) return cb(new Error("Invalid project"));
+    const dir = path.join(CONFIG_DIR, projectId, "uploads");
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname) || ".png";
+    cb(null, `upload-${Date.now()}${ext}`);
+  },
+});
+const upload = multer({
+  storage: uploadStorage,
+  limits: { fileSize: UPLOAD_MAX_BYTES },
+  fileFilter: (_req, file, cb) => {
+    if (ALLOWED_MIME.has(file.mimetype)) cb(null, true);
+    else cb(new Error(`Unsupported type: ${file.mimetype}`));
+  },
+});
+
+router.post("/api/upload", upload.single("file"), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+  return res.json({
+    ok: true,
+    path: req.file.path,
+    name: req.file.filename,
+  });
+});
+
+// Serve uploaded images for thumbnail rendering
+router.get("/api/uploads/:project/:filename", (req, res) => {
+  const { project, filename } = req.params;
+  // Sanitize to prevent directory traversal
+  if (/[/\\]/.test(project) || /[/\\]/.test(filename)) {
+    return res.status(400).json({ error: "Invalid path" });
+  }
+  const filePath = path.join(CONFIG_DIR, project, "uploads", filename);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: "Not found" });
+  res.sendFile(filePath);
 });
 
 // ─── Projects (dashboard aggregation) ──────────────────────────────────────
