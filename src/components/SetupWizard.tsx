@@ -247,7 +247,13 @@ export default function SetupWizard() {
   const goToStep = useCallback((targetIdx: number) => {
     setSteps((prev) => prev.map((s, i) => {
       if (i === targetIdx) return { ...s, status: "active" as StepStatus };
-      if (i === currentStep) return { ...s, status: "done" as StepStatus };
+      // #480: Only keep "done" if the step was already completed.
+      // In-progress/active steps revert to "pending" on back-navigation.
+      if (i === currentStep) {
+        return s.status === "done"
+          ? s
+          : { ...s, status: "pending" as StepStatus };
+      }
       return s;
     }));
     setCurrentStep(targetIdx);
