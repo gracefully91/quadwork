@@ -8,6 +8,11 @@ const pty = require("node-pty");
 const { spawn } = require("child_process");
 const { readConfig, resolveAgentCwd, resolveAgentCommand, resolveProjectChattr, resolveChattrSpawn, syncChattrToken, CONFIG_PATH } = require("./config");
 const routes = require("./routes");
+const {
+  patchAgentchattrConfigForDiscordBridge,
+  patchAgentchattrConfigForTelegramBridge,
+  projectAgentchattrConfigPath,
+} = routes;
 const { waitForAgentChattrReady, registerAgent, deregisterAgent, startHeartbeat, stopHeartbeat } = require("./agentchattr-registry");
 const { patchAgentchattrCss } = require("./install-agentchattr");
 const { startQueueWatcher, stopQueueWatcher } = require("./queue-watcher");
@@ -1934,6 +1939,37 @@ server.listen(PORT, "127.0.0.1", () => {
     });
     const { dir: acDir } = resolveProjectChattr(p.id);
     if (acDir) patchAgentchattrCss(acDir);
+  }
+  // #457: migrate bridge slugs in AC configs on startup.
+  // Renames [agents.discord-bridge] → [agents.dc] and
+  // [agents.telegram-bridge] → [agents.tg] so bridges register
+  // under the short slug. Restarts AC for projects whose config changed.
+  for (const p of (startupCfg.projects || [])) {
+    const acPath = projectAgentchattrConfigPath(p.id);
+    if (!fs.existsSync(acPath)) continue;
+    try {
+      const before = fs.readFileSync(acPath, "utf-8");
+      const dc = patchAgentchattrConfigForDiscordBridge(before);
+      const tg = patchAgentchattrConfigForTelegramBridge(dc.text);
+      if (dc.changed || tg.changed) {
+        fs.writeFileSync(acPath, tg.text);
+        console.log(`[bridge-migrate] ${p.id}: migrated AC config slugs`);
+        // Restart AC so it loads the new agent slugs
+        setTimeout(async () => {
+          try {
+            const r = await fetch(`http://127.0.0.1:${PORT}/api/agentchattr/${encodeURIComponent(p.id)}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "restart" }),
+            });
+            if (r.ok) console.log(`[bridge-migrate] ${p.id}: restarted AC`);
+            else console.warn(`[bridge-migrate] ${p.id}: AC restart returned ${r.status}`);
+          } catch (err) {
+            console.warn(`[bridge-migrate] ${p.id}: AC restart failed: ${err.message || err}`);
+          }
+        }, 3000);
+      }
+    } catch {}
   }
   // #416: start the AC health monitor
   startAcHealthMonitor();
