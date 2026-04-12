@@ -47,19 +47,20 @@ function buildInjectionPrompt(agentName, { channel, jobId, customPrompt, attachm
     // wording; leave them alone.
     return customPrompt.trim();
   }
+  let prompt;
   if (jobId) {
-    return (
+    prompt =
       `You are @${agentName} in this AgentChattr instance. ` +
       `mcp read job_id=${jobId} with sender: "${agentName}" — ` +
-      `you (@${agentName}) were mentioned in a job thread, take appropriate action.`
-    );
+      `you (@${agentName}) were mentioned in a job thread, take appropriate action.`;
+  } else {
+    const ch = channel || "general";
+    prompt =
+      `You are @${agentName} in this AgentChattr instance. ` +
+      `mcp read #${ch} with sender: "${agentName}" — ` +
+      `look for @${agentName} mentions (NOT @claude). ` +
+      `You were mentioned, take appropriate action.`;
   }
-  const ch = channel || "general";
-  let prompt =
-    `You are @${agentName} in this AgentChattr instance. ` +
-    `mcp read #${ch} with sender: "${agentName}" — ` +
-    `look for @${agentName} mentions (NOT @claude). ` +
-    `You were mentioned, take appropriate action.`;
   // #466: include attachment paths so image-capable agents can read them
   if (Array.isArray(attachments) && attachments.length > 0) {
     for (const att of attachments) {

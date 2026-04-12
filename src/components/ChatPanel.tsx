@@ -241,7 +241,7 @@ function ChatPanelAPI({ projectId }: { projectId?: string }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const uploadFile = async (file: File) => {
-    if (uploading || !projectId) return;
+    if (!projectId) return;
     setUploading(true);
     try {
       const form = new FormData();
@@ -261,6 +261,12 @@ function ChatPanelAPI({ projectId }: { projectId?: string }) {
       setSendError((err as Error).message);
     } finally {
       setUploading(false);
+    }
+  };
+
+  const uploadFiles = (files: File[]) => {
+    for (const file of files) {
+      if (file.type.startsWith("image/")) uploadFile(file);
     }
   };
 
@@ -589,24 +595,25 @@ function ChatPanelAPI({ projectId }: { projectId?: string }) {
             onPaste={(e) => {
               const items = e.clipboardData?.items;
               if (!items) return;
+              const imageFiles: File[] = [];
               for (const item of Array.from(items)) {
                 if (item.type.startsWith("image/")) {
-                  e.preventDefault();
                   const file = item.getAsFile();
-                  if (file) uploadFile(file);
-                  return;
+                  if (file) imageFiles.push(file);
                 }
+              }
+              if (imageFiles.length > 0) {
+                e.preventDefault();
+                uploadFiles(imageFiles);
               }
             }}
             onDrop={(e) => {
               const files = e.dataTransfer?.files;
               if (!files) return;
-              for (const file of Array.from(files)) {
-                if (file.type.startsWith("image/")) {
-                  e.preventDefault();
-                  uploadFile(file);
-                  return;
-                }
+              const imageFiles = Array.from(files).filter((f) => f.type.startsWith("image/"));
+              if (imageFiles.length > 0) {
+                e.preventDefault();
+                uploadFiles(imageFiles);
               }
             }}
             onDragOver={(e) => {
@@ -621,10 +628,11 @@ function ChatPanelAPI({ projectId }: { projectId?: string }) {
             ref={fileInputRef}
             type="file"
             accept="image/png,image/jpeg,image/gif,image/webp"
+            multiple
             className="hidden"
             onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) uploadFile(file);
+              const files = e.target.files;
+              if (files && files.length > 0) uploadFiles(Array.from(files));
               e.target.value = "";
             }}
           />
