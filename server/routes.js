@@ -2560,16 +2560,14 @@ router.post("/api/telegram", async (req, res) => {
             `pip output tail:\n${pipOutput.split("\n").slice(-10).join("\n")}`,
         });
       }
-      // #383 Bug 3: ensure every known project's AC config declares
-      // the `tg` agent. Without this, AC's registry
-      // rejects the bridge's register call with `400 unknown base`
-      // and the bridge enters an infinite re-register loop.
-      // Idempotent — append-only, skips configs that already have
-      // the section. Does NOT restart AC servers; the operator
-      // must click SERVER → Restart to load the new agent slug.
+      // #383 Bug 3 / #457: ensure every known project's AC config
+      // declares the `tg` agent and migrates old `telegram-bridge`
+      // slug. Restarts AC for projects whose config changed so the
+      // new slug loads immediately.
       const patched = [];
       try {
         const cfgAll = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8"));
+        const serverPort = cfgAll.port || 8400;
         for (const proj of cfgAll.projects || []) {
           if (!proj || !proj.id) continue;
           const acPath = projectAgentchattrConfigPath(proj.id);
@@ -2580,6 +2578,14 @@ router.post("/api/telegram", async (req, res) => {
             if (changed) {
               fs.writeFileSync(acPath, text);
               patched.push(proj.id);
+              // #457: restart AC so it loads the new agent slug
+              setTimeout(async () => {
+                try {
+                  await fetch(`http://127.0.0.1:${serverPort}/api/agentchattr/${encodeURIComponent(proj.id)}/restart`, {
+                    method: "POST",
+                  });
+                } catch {}
+              }, 1000);
             }
           } catch {}
         }
@@ -3010,10 +3016,12 @@ router.post("/api/discord", async (req, res) => {
             `pip output tail:\n${pipOutput.split("\n").slice(-10).join("\n")}`,
         });
       }
-      // Patch all project AC configs with [agents.dc]
+      // #457: Patch all project AC configs with [agents.dc] and
+      // migrate old `discord-bridge` slug. Restart AC for changed projects.
       const patched = [];
       try {
         const cfgAll = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8"));
+        const serverPort = cfgAll.port || 8400;
         for (const proj of cfgAll.projects || []) {
           if (!proj || !proj.id) continue;
           const acPath = projectAgentchattrConfigPath(proj.id);
@@ -3024,6 +3032,14 @@ router.post("/api/discord", async (req, res) => {
             if (changed) {
               fs.writeFileSync(acPath, text);
               patched.push(proj.id);
+              // #457: restart AC so it loads the new agent slug
+              setTimeout(async () => {
+                try {
+                  await fetch(`http://127.0.0.1:${serverPort}/api/agentchattr/${encodeURIComponent(proj.id)}/restart`, {
+                    method: "POST",
+                  });
+                } catch {}
+              }, 1000);
             }
           } catch {}
         }
@@ -3253,6 +3269,7 @@ module.exports.checkDiscordBridgePythonDeps = checkDiscordBridgePythonDeps;
 module.exports.buildDiscordBridgeToml = buildDiscordBridgeToml;
 module.exports.patchAgentchattrConfigForDiscordBridge = patchAgentchattrConfigForDiscordBridge;
 module.exports.buildDiscordBridgeSpawnEnv = buildDiscordBridgeSpawnEnv;
+module.exports.projectAgentchattrConfigPath = projectAgentchattrConfigPath;
 // #236: expose sendViaWebSocket so the chat-ws-send regression test
 // can verify the ack/body/error paths against a fake AC ws server.
 module.exports.sendViaWebSocket = sendViaWebSocket;
