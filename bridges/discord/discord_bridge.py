@@ -222,13 +222,25 @@ async def poll_ac_to_discord(cfg, channel):
     bridge_sender = cfg["bridge_sender"]
     interval = cfg["poll_interval"]
 
+    # #458: dedup guard — track recently forwarded message IDs so a
+    # stale cursor, drain-loop hiccup, or restart replay can't send
+    # the same AC message to Discord twice within a session.
+    forwarded_ids: set[int] = set()
+    # Cap the set size to avoid unbounded growth in long-running sessions.
+    MAX_FORWARDED = 2000
+
     while True:
         try:
             # Drain all available messages before sleeping. When AC
             # returns a full batch (limit messages), immediately
             # re-fetch with the updated cursor to avoid dropping
             # overflow under high volume.
-            while True:
+            # #458: cap drain iterations to prevent infinite loop if
+            # since_id isn't being honored by AC.
+            drain_iterations = 0
+            MAX_DRAIN = 20
+            while drain_iterations < MAX_DRAIN:
+                drain_iterations += 1
                 params = {"limit": 50}
                 if _cursor["last_seen_id"]:
                     params["since_id"] = _cursor["last_seen_id"]
@@ -254,30 +266,57 @@ async def poll_ac_to_discord(cfg, channel):
                 resp.raise_for_status()
                 messages = resp.json()
 
-                if not isinstance(messages, list):
+                if not isinstance(messages, list) or not messages:
                     break
+
+                # #458: detect stale responses — if every message ID in
+                # the batch is <= our cursor, the server isn't honoring
+                # since_id. Break to avoid re-forwarding.
+                max_batch_id = max(m.get("id", 0) for m in messages)
+                if max_batch_id <= _cursor["last_seen_id"]:
+                    log.warning("AC returned stale batch (max_id=%d <= cursor=%d) — breaking drain", max_batch_id, _cursor["last_seen_id"])
+                    break
+
+                # #458: build echo names once per batch (inputs don't
+                # change per-message).
+                echo_names = ac["known_names"] | {
+                    bridge_sender,
+                    "discord-bridge",
+                    "discord_bridge",
+                }
 
                 for msg in messages:
                     msg_id = msg.get("id", 0)
                     sender = msg.get("sender", "")
                     text = msg.get("text", "")
 
-                    # Echo prevention: skip our own messages (any name
-                    # the bridge has ever registered as this session)
-                    if sender in ac["known_names"] or sender == bridge_sender:
+                    # Helper: advance cursor and persist. Called after
+                    # a message is fully handled (skipped or forwarded)
+                    # so a crash can't replay it (#458). NOT called
+                    # before Discord delivery to avoid silent message
+                    # loss on transient send failures.
+                    def commit_cursor():
                         if msg_id > _cursor["last_seen_id"]:
                             _cursor["last_seen_id"] = msg_id
+                            save_cursor(cfg["cursor_file"])
+
+                    # Echo prevention: skip our own messages
+                    if sender in echo_names:
+                        commit_cursor()
                         continue
 
                     # Skip system auto-recovery messages
                     if sender == "system":
-                        if msg_id > _cursor["last_seen_id"]:
-                            _cursor["last_seen_id"] = msg_id
+                        commit_cursor()
                         continue
 
                     if not text:
-                        if msg_id > _cursor["last_seen_id"]:
-                            _cursor["last_seen_id"] = msg_id
+                        commit_cursor()
+                        continue
+
+                    # #458: dedup guard — skip already-forwarded messages
+                    if msg_id in forwarded_ids:
+                        commit_cursor()
                         continue
 
                     # Forward to Discord
@@ -287,19 +326,25 @@ async def poll_ac_to_discord(cfg, channel):
                         if len(discord_text) > 2000:
                             discord_text = discord_text[:1997] + "..."
                         await channel.send(discord_text)
+                        # Only commit cursor + mark forwarded AFTER
+                        # successful Discord delivery.
+                        forwarded_ids.add(msg_id)
+                        commit_cursor()
+                        # Trim the set if it grows too large
+                        if len(forwarded_ids) > MAX_FORWARDED:
+                            sorted_ids = sorted(forwarded_ids)
+                            forwarded_ids.clear()
+                            forwarded_ids.update(sorted_ids[len(sorted_ids) // 2:])
                     except Exception as exc:
                         log.error("Failed to send to Discord: %s", exc)
-
-                    if msg_id > _cursor["last_seen_id"]:
-                        _cursor["last_seen_id"] = msg_id
-
-                # Persist cursor after each page
-                save_cursor(cfg["cursor_file"])
 
                 # If we got a full batch, there may be more — drain immediately
                 if len(messages) >= 50:
                     continue
                 break
+
+            if drain_iterations >= MAX_DRAIN:
+                log.warning("Drain loop hit %d iterations — breaking to avoid infinite loop", MAX_DRAIN)
 
         except requests.RequestException as exc:
             log.warning("AC poll error: %s", exc)
