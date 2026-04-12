@@ -2574,12 +2574,15 @@ router.post("/api/telegram", async (req, res) => {
       try {
         if (!fs.existsSync(BRIDGE_DIR)) {
           execFileSync("gh", ["repo", "clone", "realproject7/agentchattr-telegram", BRIDGE_DIR], { encoding: "utf-8", timeout: 30000 });
-          // #444: pin to a known commit after clone
-          try {
-            execFileSync("git", ["-C", BRIDGE_DIR, "checkout", "-B", "pinned", AGENTCHATTR_TELEGRAM_PIN], { encoding: "utf-8", timeout: 30000 });
-          } catch {
-            console.warn(`[telegram] WARNING: could not check out agentchattr-telegram pin ${AGENTCHATTR_TELEGRAM_PIN}; falling back to default branch.`);
-          }
+        }
+        // #444 / #470: pin to a known commit — on fresh clone AND on
+        // upgrade (existing clone may be on an older pin with stale
+        // bridge_sender defaults).
+        try {
+          execFileSync("git", ["-C", BRIDGE_DIR, "fetch", "origin"], { encoding: "utf-8", timeout: 30000 });
+          execFileSync("git", ["-C", BRIDGE_DIR, "checkout", "-B", "pinned", AGENTCHATTR_TELEGRAM_PIN], { encoding: "utf-8", timeout: 30000 });
+        } catch {
+          console.warn(`[telegram] WARNING: could not check out agentchattr-telegram pin ${AGENTCHATTR_TELEGRAM_PIN}; falling back to default branch.`);
         }
         // #380: create the dedicated venv if missing. `python3 -m venv`
         // builds a fresh isolated environment that bypasses PEP 668

@@ -1980,6 +1980,23 @@ server.listen(PORT, "127.0.0.1", () => {
       }
     } catch {}
   }
+  // #470: patch stale bridge_sender defaults in on-disk bridge scripts.
+  // The AC config migration (#457) renames the agent sections, but the
+  // bridge scripts themselves may still have old defaults if the operator
+  // upgraded QuadWork without re-installing the bridges.
+  const BRIDGE_SLUG_PATCHES = [
+    { file: path.join(os.homedir(), ".quadwork", "agentchattr-telegram", "telegram_bridge.py"), old: '"telegram-bridge"', replacement: '"tg"' },
+    { file: path.join(os.homedir(), ".quadwork", "agentchattr-discord", "discord_bridge.py"), old: '"discord-bridge"', replacement: '"dc"' },
+  ];
+  for (const { file, old, replacement } of BRIDGE_SLUG_PATCHES) {
+    try {
+      if (!fs.existsSync(file)) continue;
+      const content = fs.readFileSync(file, "utf-8");
+      if (!content.includes(old)) continue;
+      fs.writeFileSync(file, content.replaceAll(old, replacement));
+      console.log(`[bridge-migrate] patched stale bridge_sender in ${path.basename(file)}`);
+    } catch {}
+  }
   // #416: start the AC health monitor
   startAcHealthMonitor();
 });
