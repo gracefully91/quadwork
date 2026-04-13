@@ -552,7 +552,13 @@ export default function Sidebar() {
                 className="w-full px-3 py-1.5 text-left text-text hover:bg-[#1a1a1a] transition-colors"
                 onClick={() => {
                   const name = prompt("New group name:");
-                  if (name?.trim()) moveToGroup(contextMenu.projectId, name.trim());
+                  if (!name?.trim()) return;
+                  const trimmed = name.trim();
+                  if (groups.some((g) => g.name.toLowerCase() === trimmed.toLowerCase())) {
+                    alert(`Group "${trimmed}" already exists.`);
+                    return;
+                  }
+                  moveToGroup(contextMenu.projectId, trimmed);
                 }}
               >
                 + New group
