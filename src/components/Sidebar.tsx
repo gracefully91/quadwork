@@ -61,7 +61,23 @@ function PlusIcon() {
   );
 }
 
-function ProjectIcon({ project, isActive }: { project: Project; isActive: boolean }) {
+function CollapseIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M10 3L5 8l5 5" />
+    </svg>
+  );
+}
+
+function ExpandIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 3l5 5-5 5" />
+    </svg>
+  );
+}
+
+function ProjectIcon({ project, isActive, expanded }: { project: Project; isActive: boolean; expanded: boolean }) {
   const [tooltip, setTooltip] = useState<{ top: number } | null>(null);
   const ref = useRef<HTMLAnchorElement>(null);
 
@@ -70,25 +86,32 @@ function ProjectIcon({ project, isActive }: { project: Project; isActive: boolea
       <Link
         ref={ref}
         href={`/project/${project.id}`}
+        className={`flex items-center gap-2 ${expanded ? "w-full px-2" : ""} rounded-sm transition-colors ${
+          !expanded ? "" : isActive ? "bg-[#1a1a1a]" : "hover:bg-[#1a1a1a]"
+        }`}
         onMouseEnter={() => {
+          if (expanded) return;
           const rect = ref.current?.getBoundingClientRect();
           if (rect) setTooltip({ top: rect.top + rect.height / 2 });
         }}
         onMouseLeave={() => setTooltip(null)}
       >
         <div
-          className={`w-10 h-10 flex items-center justify-center rounded-full text-[11px] font-semibold uppercase tracking-tight transition-colors ${
+          className={`w-10 h-10 shrink-0 flex items-center justify-center rounded-full text-[11px] font-semibold uppercase tracking-tight transition-colors ${
             isActive
               ? "border-2 border-accent text-accent"
-              : "border border-border text-text-muted hover:text-text hover:bg-[#1a1a1a]"
+              : "border border-border text-text-muted hover:text-text"
           }`}
         >
-          {/* #207: two-letter chip — first two characters of the project
-              name, falling back to a single character for 1-char names. */}
           {project.name.slice(0, 2) || "?"}
         </div>
+        {expanded && (
+          <span className={`text-xs truncate ${isActive ? "text-accent" : "text-text-muted"}`}>
+            {project.name}
+          </span>
+        )}
       </Link>
-      {tooltip && (
+      {!expanded && tooltip && (
         <div
           className="fixed px-2 py-1 bg-bg-surface border border-border text-text text-xs whitespace-nowrap pointer-events-none z-50"
           style={{ left: 72, top: tooltip.top, transform: "translateY(-50%)" }}
@@ -100,10 +123,29 @@ function ProjectIcon({ project, isActive }: { project: Project; isActive: boolea
   );
 }
 
+const SIDEBAR_KEY = "qw-sidebar-expanded";
+
 export default function Sidebar() {
   const pathname = usePathname();
   const [projects, setProjects] = useState<Project[]>([]);
   const [backendStatus, setBackendStatus] = useState<"online" | "offline" | "recovering">("online");
+  const [expanded, setExpanded] = useState(false);
+
+  // Restore persisted state on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(SIDEBAR_KEY);
+      if (stored === "true") setExpanded(true);
+    } catch {}
+  }, []);
+
+  const toggleExpanded = () => {
+    setExpanded((prev) => {
+      const next = !prev;
+      try { localStorage.setItem(SIDEBAR_KEY, String(next)); } catch {}
+      return next;
+    });
+  };
 
   useEffect(() => {
     fetch("/api/config")
@@ -153,11 +195,30 @@ export default function Sidebar() {
     : null;
 
   return (
-    <aside className="w-16 shrink-0 h-full border-r border-border bg-bg-surface flex flex-col items-center py-3">
+    <aside
+      className={`shrink-0 h-full border-r border-border bg-bg-surface flex flex-col py-3 transition-[width] duration-200 ease-in-out overflow-hidden ${
+        expanded ? "w-52 items-stretch px-2" : "w-16 items-center"
+      }`}
+    >
+      {/* Toggle */}
+      <button
+        onClick={toggleExpanded}
+        className={`shrink-0 flex items-center justify-center w-8 h-8 rounded-sm text-text-muted hover:text-text hover:bg-[#1a1a1a] transition-colors ${
+          expanded ? "self-end mr-0" : "self-center"
+        }`}
+        title={expanded ? "Collapse sidebar" : "Expand sidebar"}
+      >
+        {expanded ? <CollapseIcon /> : <ExpandIcon />}
+      </button>
+
+      <div className="h-1" />
+
       {/* Home */}
       <Link
         href="/"
-        className={`w-10 h-10 flex items-center justify-center rounded-sm transition-colors ${
+        className={`flex items-center gap-2 rounded-sm transition-colors ${
+          expanded ? "px-2 py-2" : "w-10 h-10 justify-center self-center"
+        } ${
           isHome
             ? "text-accent"
             : "text-text-muted hover:text-text hover:bg-[#1a1a1a]"
@@ -165,13 +226,14 @@ export default function Sidebar() {
         title="Home"
       >
         <HomeIcon />
+        {expanded && <span className="text-xs">Home</span>}
       </Link>
 
       {/* Divider */}
-      <div className="w-6 h-px bg-border my-2" />
+      <div className={`h-px bg-border my-2 ${expanded ? "" : "w-6 self-center"}`} />
 
       {/* Projects */}
-      <div className="flex-1 flex flex-col items-center gap-2 overflow-y-auto min-h-0">
+      <div className={`flex-1 flex flex-col gap-2 overflow-y-auto min-h-0 ${expanded ? "" : "items-center"}`}>
         {projects.map((project) => {
           const isActive = activeProjectId === project.id;
           return (
@@ -179,6 +241,7 @@ export default function Sidebar() {
               key={project.id}
               project={project}
               isActive={isActive}
+              expanded={expanded}
             />
           );
         })}
@@ -186,40 +249,56 @@ export default function Sidebar() {
         {/* Add project */}
         <Link
           href="/setup"
-          className="w-10 h-10 flex items-center justify-center rounded-full border border-dashed border-border text-text-muted hover:text-text hover:bg-[#1a1a1a] transition-colors"
+          className={`flex items-center gap-2 rounded-full transition-colors ${
+            expanded
+              ? "px-2 py-2 border border-dashed border-border text-text-muted hover:text-text hover:bg-[#1a1a1a] rounded-sm"
+              : "w-10 h-10 justify-center border border-dashed border-border text-text-muted hover:text-text hover:bg-[#1a1a1a]"
+          }`}
           title="Add project"
         >
           <PlusIcon />
+          {expanded && <span className="text-xs text-text-muted">New Project</span>}
         </Link>
       </div>
 
       {/* Divider */}
-      <div className="w-6 h-px bg-border my-2" />
+      <div className={`h-px bg-border my-2 ${expanded ? "" : "w-6 self-center"}`} />
 
       {/* Backend status indicator */}
       {backendStatus !== "online" && (
-        <div className="mb-2 relative group">
-          <div
-            className={`w-3 h-3 rounded-full ${
-              backendStatus === "offline"
-                ? "bg-red-500 animate-pulse"
-                : "bg-green-500"
-            }`}
-          />
-          <div className="fixed left-16 ml-2 px-2 py-1 bg-bg-surface border border-border text-xs whitespace-nowrap z-50 hidden group-hover:block"
-            style={{ transform: "translateY(-50%)", top: "auto" }}
-          >
-            {backendStatus === "offline"
-              ? "Backend offline — run quadwork start"
-              : "Backend reconnected"}
+        <div className={`mb-2 relative group ${expanded ? "px-2" : "self-center"}`}>
+          <div className="flex items-center gap-2">
+            <div
+              className={`w-3 h-3 shrink-0 rounded-full ${
+                backendStatus === "offline"
+                  ? "bg-red-500 animate-pulse"
+                  : "bg-green-500"
+              }`}
+            />
+            {expanded && (
+              <span className="text-xs text-text-muted">
+                {backendStatus === "offline" ? "Backend offline" : "Reconnected"}
+              </span>
+            )}
           </div>
+          {!expanded && (
+            <div className="fixed left-16 ml-2 px-2 py-1 bg-bg-surface border border-border text-xs whitespace-nowrap z-50 hidden group-hover:block"
+              style={{ transform: "translateY(-50%)", top: "auto" }}
+            >
+              {backendStatus === "offline"
+                ? "Backend offline — run quadwork start"
+                : "Backend reconnected"}
+            </div>
+          )}
         </div>
       )}
 
       {/* Settings */}
       <Link
         href="/settings"
-        className={`w-10 h-10 flex items-center justify-center rounded-sm transition-colors ${
+        className={`flex items-center gap-2 rounded-sm transition-colors ${
+          expanded ? "px-2 py-2" : "w-10 h-10 justify-center self-center"
+        } ${
           isSettings
             ? "text-accent"
             : "text-text-muted hover:text-text hover:bg-[#1a1a1a]"
@@ -227,6 +306,7 @@ export default function Sidebar() {
         title="Settings"
       >
         <GearIcon />
+        {expanded && <span className="text-xs">Settings</span>}
       </Link>
     </aside>
   );
