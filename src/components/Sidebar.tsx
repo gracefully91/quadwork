@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface Project {
   id: string;
@@ -77,7 +77,24 @@ function ExpandIcon() {
   );
 }
 
-function ProjectIcon({ project, isActive, expanded }: { project: Project; isActive: boolean; expanded: boolean }) {
+function PinIcon({ size = 10 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" stroke="none">
+      <path d="M10.5 1.5L14.5 5.5L10 7.5L8.5 12.5L3.5 7.5L8.5 6L10.5 1.5Z" />
+      <path d="M3.5 7.5L1 15L8.5 12.5" />
+    </svg>
+  );
+}
+
+interface ProjectIconProps {
+  project: Project;
+  isActive: boolean;
+  expanded: boolean;
+  pinned: boolean;
+  onContextMenu: (e: React.MouseEvent, projectId: string) => void;
+}
+
+function ProjectIcon({ project, isActive, expanded, pinned, onContextMenu }: ProjectIconProps) {
   const [tooltip, setTooltip] = useState<{ top: number } | null>(null);
   const ref = useRef<HTMLAnchorElement>(null);
 
@@ -95,19 +112,28 @@ function ProjectIcon({ project, isActive, expanded }: { project: Project; isActi
           if (rect) setTooltip({ top: rect.top + rect.height / 2 });
         }}
         onMouseLeave={() => setTooltip(null)}
+        onContextMenu={(e) => onContextMenu(e, project.id)}
       >
-        <div
-          className={`w-10 h-10 shrink-0 flex items-center justify-center rounded-full text-[11px] font-semibold uppercase tracking-tight transition-colors ${
-            isActive
-              ? "border-2 border-accent text-accent"
-              : "border border-border text-text-muted hover:text-text"
-          }`}
-        >
-          {project.name.slice(0, 2) || "?"}
+        <div className="relative shrink-0">
+          <div
+            className={`w-10 h-10 flex items-center justify-center rounded-full text-[11px] font-semibold uppercase tracking-tight transition-colors ${
+              isActive
+                ? "border-2 border-accent text-accent"
+                : "border border-border text-text-muted hover:text-text"
+            }`}
+          >
+            {project.name.slice(0, 2) || "?"}
+          </div>
+          {pinned && !expanded && (
+            <div className="absolute -top-1 -right-1 text-accent">
+              <PinIcon size={8} />
+            </div>
+          )}
         </div>
         {expanded && (
-          <span className={`text-xs truncate ${isActive ? "text-accent" : "text-text-muted"}`}>
+          <span className={`text-xs truncate flex items-center gap-1 ${isActive ? "text-accent" : "text-text-muted"}`}>
             {project.name}
+            {pinned && <PinIcon size={10} />}
           </span>
         )}
       </Link>
@@ -116,7 +142,7 @@ function ProjectIcon({ project, isActive, expanded }: { project: Project; isActi
           className="fixed px-2 py-1 bg-bg-surface border border-border text-text text-xs whitespace-nowrap pointer-events-none z-50"
           style={{ left: 72, top: tooltip.top, transform: "translateY(-50%)" }}
         >
-          {project.name}
+          {pinned && "📌 "}{project.name}
         </div>
       )}
     </>
@@ -125,11 +151,20 @@ function ProjectIcon({ project, isActive, expanded }: { project: Project; isActi
 
 const SIDEBAR_KEY = "qw-sidebar-expanded";
 
+interface ContextMenu {
+  x: number;
+  y: number;
+  projectId: string;
+}
+
 export default function Sidebar() {
   const pathname = usePathname();
   const [projects, setProjects] = useState<Project[]>([]);
+  const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [backendStatus, setBackendStatus] = useState<"online" | "offline" | "recovering">("online");
   const [expanded, setExpanded] = useState(false);
+  const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
+  const configRef = useRef<Record<string, unknown> | null>(null);
 
   // Restore persisted state on mount — only on desktop-width screens
   useEffect(() => {
@@ -163,7 +198,11 @@ export default function Sidebar() {
         if (!r.ok) throw new Error(`Config fetch failed: ${r.status}`);
         return r.json();
       })
-      .then((cfg) => setProjects((cfg.projects || []).filter((p: Project & { archived?: boolean }) => !p.archived)))
+      .then((cfg) => {
+        configRef.current = cfg;
+        setProjects((cfg.projects || []).filter((p: Project & { archived?: boolean }) => !p.archived));
+        setPinnedIds(cfg.pinned_projects || []);
+      })
       .catch(() => {});
   }, []);
 
@@ -203,6 +242,54 @@ export default function Sidebar() {
   const activeProjectId = pathname.startsWith("/project/")
     ? pathname.split("/")[2]
     : null;
+
+  const persistPins = useCallback((newPins: string[]) => {
+    setPinnedIds(newPins);
+    // Re-read latest config before writing to avoid clobbering concurrent changes
+    fetch("/api/config")
+      .then((r) => r.json())
+      .then((latest) => {
+        const updated = { ...latest, pinned_projects: newPins };
+        configRef.current = updated;
+        return fetch("/api/config", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updated),
+        });
+      })
+      .catch(() => {});
+  }, []);
+
+  const handlePin = (projectId: string) => {
+    if (pinnedIds.includes(projectId)) return;
+    persistPins([projectId, ...pinnedIds]);
+    setContextMenu(null);
+  };
+
+  const handleUnpin = (projectId: string) => {
+    persistPins(pinnedIds.filter((id) => id !== projectId));
+    setContextMenu(null);
+  };
+
+  const handleContextMenu = (e: React.MouseEvent, projectId: string) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, projectId });
+  };
+
+  // Close context menu on click anywhere
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [contextMenu]);
+
+  // Sort projects: pinned first (in pin order), then unpinned
+  const pinnedSet = new Set(pinnedIds);
+  const pinnedProjects = pinnedIds
+    .map((id) => projects.find((p) => p.id === id))
+    .filter((p): p is Project => !!p);
+  const unpinnedProjects = projects.filter((p) => !pinnedSet.has(p.id));
 
   return (
     <aside
@@ -244,17 +331,38 @@ export default function Sidebar() {
 
       {/* Projects */}
       <div className={`flex-1 flex flex-col gap-2 overflow-y-auto min-h-0 ${expanded ? "" : "items-center"}`}>
-        {projects.map((project) => {
-          const isActive = activeProjectId === project.id;
-          return (
-            <ProjectIcon
-              key={project.id}
-              project={project}
-              isActive={isActive}
-              expanded={expanded}
-            />
-          );
-        })}
+        {/* Pinned group */}
+        {pinnedProjects.length > 0 && (
+          <>
+            {expanded && (
+              <span className="text-[10px] uppercase tracking-widest text-text-muted px-2">Pinned</span>
+            )}
+            {pinnedProjects.map((project) => (
+              <ProjectIcon
+                key={project.id}
+                project={project}
+                isActive={activeProjectId === project.id}
+                expanded={expanded}
+                pinned
+                onContextMenu={handleContextMenu}
+              />
+            ))}
+            {/* Divider between pinned and unpinned */}
+            <div className={`h-px bg-border ${expanded ? "" : "w-6"}`} />
+          </>
+        )}
+
+        {/* Unpinned group */}
+        {unpinnedProjects.map((project) => (
+          <ProjectIcon
+            key={project.id}
+            project={project}
+            isActive={activeProjectId === project.id}
+            expanded={expanded}
+            pinned={false}
+            onContextMenu={handleContextMenu}
+          />
+        ))}
 
         {/* Add project */}
         <Link
@@ -270,6 +378,30 @@ export default function Sidebar() {
           {expanded && <span className="text-xs text-text-muted">New Project</span>}
         </Link>
       </div>
+
+      {/* Context menu */}
+      {contextMenu && (
+        <div
+          className="fixed bg-bg-surface border border-border py-1 z-50 text-xs"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          {pinnedSet.has(contextMenu.projectId) ? (
+            <button
+              className="w-full px-3 py-1.5 text-left text-text hover:bg-[#1a1a1a] transition-colors"
+              onClick={() => handleUnpin(contextMenu.projectId)}
+            >
+              Unpin
+            </button>
+          ) : (
+            <button
+              className="w-full px-3 py-1.5 text-left text-text hover:bg-[#1a1a1a] transition-colors"
+              onClick={() => handlePin(contextMenu.projectId)}
+            >
+              Pin to top
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Divider */}
       <div className={`h-px bg-border my-2 ${expanded ? "" : "w-6 self-center"}`} />
