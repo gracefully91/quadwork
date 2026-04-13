@@ -132,7 +132,9 @@ router.get("/api/chat", async (req, res) => {
     const r = await fetch(buildUrl(token), { headers: chatAuthHeaders(token) });
     // #448: on 401/403, re-sync the session token from AC and retry
     // once. The stored token may be stale after an AC restart.
-    if ((r.status === 401 || r.status === 403) && projectId) {
+    // #487: also retry on 5xx — a temporary AC outage (e.g. 502) may
+    // precede a restart that regenerates the session token.
+    if ((r.status === 401 || r.status === 403 || r.status >= 500) && projectId) {
       try { await syncChattrToken(projectId); } catch {}
       const { token: refreshed } = getChattrConfig(projectId);
       if (refreshed && refreshed !== token) {
@@ -972,8 +974,16 @@ router.post("/api/chat", async (req, res) => {
     // the token from AgentChattr's HTML and retry once before giving
     // up. This is the actual fix for the "401 after restart" report
     // in #230 (the cache was stuck on an old token).
-    if (err && err.code === "EAGENTCHATTR_401") {
-      console.warn(`[chat] ws auth failed for project ${projectId}, re-syncing session token and retrying...`);
+    //
+    // #487: also attempt resync on generic ws errors (connection
+    // refused, ECONNRESET, timeout, etc.) — a 502/5xx from a
+    // temporary AC outage may resolve after a token refresh once AC
+    // is back.
+    const isAuthError = err && err.code === "EAGENTCHATTR_401";
+    const isConnError = !isAuthError && err;
+    if ((isAuthError || isConnError) && projectId) {
+      const tag = isAuthError ? "ws auth failed" : "ws connection error";
+      console.warn(`[chat] ${tag} for project ${projectId}, re-syncing session token and retrying...`);
       try { await syncChattrToken(projectId); }
       catch (syncErr) { console.warn(`[chat] syncChattrToken failed: ${syncErr.message}`); }
       const { token: refreshed } = getChattrConfig(projectId);
@@ -983,10 +993,13 @@ router.post("/api/chat", async (req, res) => {
           return res.json({ ok: true, resynced: true, message: retry.message });
         } catch (retryErr) {
           console.warn(`[chat] retry after token resync failed: ${retryErr.message}`);
-          return res.status(401).json({ error: "AgentChattr auth failed (token resync did not help)", detail: retryErr.message });
+          const status = isAuthError ? 401 : 502;
+          return res.status(status).json({ error: "AgentChattr send failed (token resync did not help)", detail: retryErr.message });
         }
       }
-      return res.status(401).json({ error: "AgentChattr auth failed", detail: err.message });
+      if (isAuthError) {
+        return res.status(401).json({ error: "AgentChattr auth failed", detail: err.message });
+      }
     }
     console.warn(`[chat] send failed for project ${projectId}: ${err && err.message}`);
     return res.status(502).json({ error: "AgentChattr unreachable", detail: err && err.message });
