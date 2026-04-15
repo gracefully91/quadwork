@@ -231,7 +231,7 @@ _DEDUP_WINDOW = 60  # seconds
 
 
 def _should_forward(msg: dict) -> bool:
-    """Return True if this AC message should be forwarded to Discord/Telegram."""
+    """Return True if this AC message should be forwarded. Pure check, no side effects."""
     sender = msg.get("sender", "")
     text = msg.get("text", "")
     msg_type = msg.get("type", "chat")
@@ -255,16 +255,21 @@ def _should_forward(msg: dict) -> bool:
     last = _last_forwarded.get(key)
     if last is not None and now - last < _DEDUP_WINDOW:
         return False
-    _last_forwarded[key] = now
+
+    return True
+
+
+def _mark_forwarded(msg: dict):
+    """Record that a message was successfully forwarded. Call after delivery."""
+    key = (msg.get("sender", ""), msg.get("text", ""))
+    _last_forwarded[key] = time.time()
 
     # Prune stale dedup entries periodically
     if len(_last_forwarded) > 500:
-        cutoff = now - _DEDUP_WINDOW
+        cutoff = time.time() - _DEDUP_WINDOW
         stale = [k for k, t in _last_forwarded.items() if t < cutoff]
         for k in stale:
             del _last_forwarded[k]
-
-    return True
 
 
 # ---------------------------------------------------------------------------
@@ -384,6 +389,7 @@ async def poll_ac_to_discord(cfg, channel):
                         # Only commit cursor + mark forwarded AFTER
                         # successful Discord delivery.
                         forwarded_ids.add(msg_id)
+                        _mark_forwarded(msg)
                         commit_cursor()
                         # Trim the set if it grows too large
                         if len(forwarded_ids) > MAX_FORWARDED:
