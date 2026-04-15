@@ -18,6 +18,7 @@ import atexit
 import json
 import logging
 import os
+import re
 import signal
 import sys
 import threading
@@ -213,6 +214,65 @@ def start_heartbeat(url):
 
 
 # ---------------------------------------------------------------------------
+# #501: message filter — suppress AC housekeeping noise from bridge output
+# ---------------------------------------------------------------------------
+
+_NOISE_PATTERNS = [
+    re.compile(r"^.+ is online$"),
+    re.compile(r"disconnected \(timeout\)"),
+    re.compile(r"^.+ disconnected$"),
+    re.compile(r"auto-recovered"),
+    re.compile(r"Resuming agent conversation"),
+]
+
+# Dedup guard: (sender, text) → timestamp of last forward
+_last_forwarded: dict[tuple[str, str], float] = {}
+_DEDUP_WINDOW = 60  # seconds
+
+
+def _should_forward(msg: dict) -> bool:
+    """Return True if this AC message should be forwarded. Pure check, no side effects."""
+    sender = msg.get("sender", "")
+    text = msg.get("text", "")
+    msg_type = msg.get("type", "chat")
+
+    # Skip join/leave system messages (online, disconnected, timeout)
+    if msg_type in ("join", "leave"):
+        return False
+
+    # Skip system sender entirely
+    if sender == "system":
+        return False
+
+    # Pattern-based filter for edge cases
+    for pat in _NOISE_PATTERNS:
+        if pat.search(text):
+            return False
+
+    # Dedup: suppress identical (sender, text) within window
+    key = (sender, text)
+    now = time.time()
+    last = _last_forwarded.get(key)
+    if last is not None and now - last < _DEDUP_WINDOW:
+        return False
+
+    return True
+
+
+def _mark_forwarded(msg: dict):
+    """Record that a message was successfully forwarded. Call after delivery."""
+    key = (msg.get("sender", ""), msg.get("text", ""))
+    _last_forwarded[key] = time.time()
+
+    # Prune stale dedup entries periodically
+    if len(_last_forwarded) > 500:
+        cutoff = time.time() - _DEDUP_WINDOW
+        stale = [k for k, t in _last_forwarded.items() if t < cutoff]
+        for k in stale:
+            del _last_forwarded[k]
+
+
+# ---------------------------------------------------------------------------
 # AC → Discord polling
 # ---------------------------------------------------------------------------
 
@@ -305,12 +365,12 @@ async def poll_ac_to_discord(cfg, channel):
                         commit_cursor()
                         continue
 
-                    # Skip system auto-recovery messages
-                    if sender == "system":
+                    if not text:
                         commit_cursor()
                         continue
 
-                    if not text:
+                    # #501: skip system/status noise and dedup
+                    if not _should_forward(msg):
                         commit_cursor()
                         continue
 
@@ -329,6 +389,7 @@ async def poll_ac_to_discord(cfg, channel):
                         # Only commit cursor + mark forwarded AFTER
                         # successful Discord delivery.
                         forwarded_ids.add(msg_id)
+                        _mark_forwarded(msg)
                         commit_cursor()
                         # Trim the set if it grows too large
                         if len(forwarded_ids) > MAX_FORWARDED:
