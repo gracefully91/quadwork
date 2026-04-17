@@ -3066,20 +3066,19 @@ router.post("/api/discord", async (req, res) => {
       const venvPip = path.join(venvDir, "bin", "pip");
       let pipOutput = "";
       try {
-        // Copy from bundled package dir (not clone — #397 decision)
-        if (!fs.existsSync(path.join(DISCORD_BRIDGE_DIR, "discord_bridge.py"))) {
-          fs.cpSync(DISCORD_BRIDGE_SRC, DISCORD_BRIDGE_DIR, { recursive: true });
-        } else {
-          // On upgrade: overwrite script, keep venv
-          fs.cpSync(
-            path.join(DISCORD_BRIDGE_SRC, "discord_bridge.py"),
-            path.join(DISCORD_BRIDGE_DIR, "discord_bridge.py"),
-          );
-          fs.cpSync(
-            path.join(DISCORD_BRIDGE_SRC, "requirements.txt"),
-            path.join(DISCORD_BRIDGE_DIR, "requirements.txt"),
-          );
+        // #506: always copy bundled bridge files (not just on first install)
+        // so re-installing after a QuadWork upgrade refreshes the script.
+        if (!fs.existsSync(DISCORD_BRIDGE_DIR)) {
+          fs.mkdirSync(DISCORD_BRIDGE_DIR, { recursive: true });
         }
+        fs.cpSync(
+          path.join(DISCORD_BRIDGE_SRC, "discord_bridge.py"),
+          path.join(DISCORD_BRIDGE_DIR, "discord_bridge.py"),
+        );
+        fs.cpSync(
+          path.join(DISCORD_BRIDGE_SRC, "requirements.txt"),
+          path.join(DISCORD_BRIDGE_DIR, "requirements.txt"),
+        );
         if (!fs.existsSync(venvPython)) {
           execFileSync("python3", ["-m", "venv", venvDir], { encoding: "utf-8", timeout: 60000 });
         }

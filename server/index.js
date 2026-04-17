@@ -1983,6 +1983,20 @@ server.listen(PORT, "127.0.0.1", () => {
       }
     } catch {}
   }
+  // #506: refresh Discord bridge script from the npm package on startup.
+  // The Telegram bridge uses git-fetch + pin, but Discord uses a file-copy
+  // pattern. Without this, upgrading QuadWork leaves a stale on-disk script
+  // missing fixes shipped in newer versions.
+  const DISCORD_BRIDGE_SRC = path.join(__dirname, "..", "bridges", "discord", "discord_bridge.py");
+  const DISCORD_BRIDGE_DEST = path.join(os.homedir(), ".quadwork", "agentchattr-discord", "discord_bridge.py");
+  if (fs.existsSync(DISCORD_BRIDGE_SRC) && fs.existsSync(path.dirname(DISCORD_BRIDGE_DEST))) {
+    try {
+      fs.copyFileSync(DISCORD_BRIDGE_SRC, DISCORD_BRIDGE_DEST);
+      console.log("[bridge-refresh] refreshed Discord bridge script from package");
+    } catch (err) {
+      console.warn(`[bridge-refresh] failed to refresh Discord bridge script: ${err.message || err}`);
+    }
+  }
   // #470: patch stale bridge_sender defaults in on-disk bridge scripts.
   // The AC config migration (#457) renames the agent sections, but the
   // bridge scripts themselves may still have old defaults if the operator
