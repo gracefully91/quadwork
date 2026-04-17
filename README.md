@@ -273,6 +273,10 @@ has a working clone, the legacy shared install can be removed safely via
 `npx quadwork cleanup --legacy` (which refuses to run if any project is
 still on the legacy install).
 
+## ─ Community
+
+Want to talk with the creator? [Join Hunt Town](https://discord.gg/syhbYPk3Wq) and find @project7.
+
 ## ─ License
 
 MIT
