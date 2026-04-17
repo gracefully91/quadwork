@@ -145,6 +145,20 @@ export default function HomeDashboard() {
               <span className="text-sm">+ New Project</span>
             </Link>
           </div>
+
+          {/* #507: subtle Discord community link */}
+          <div className="mt-4 mb-8 lg:mb-4 text-[11px] text-text-muted">
+            Want to talk with the creator?{" "}
+            <a
+              href="https://discord.gg/syhbYPk3Wq"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-text hover:text-accent transition-colors"
+            >
+              Join Hunt Town
+            </a>{" "}
+            and find @project7.
+          </div>
         </div>
 
         {/* Right column: activity feed — scrolls independently on desktop */}
