@@ -1298,6 +1298,82 @@ Dev: Work on assigned ticket or address review feedback.
 RE1/RE2: Review open PRs. If Dev pushed fixes, re-review. Post verdict on PR AND notify here.
 ALL: Communicate via this chat by tagging agents. Your terminal is NOT visible.`;
 
+// #518: server-side bridge lifecycle helpers. Stop and start Telegram +
+// Discord bridges so they respond to batch transitions even when the
+// operator is on a different project page.
+
+async function autoStopBridges(projectId, project, qwPort) {
+  if (project?.telegram_auto) {
+    try {
+      await fetch(`http://127.0.0.1:${qwPort}/api/telegram?action=stop`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: projectId }),
+        signal: AbortSignal.timeout(5000),
+      });
+      console.log(`[auto-bridge] ${projectId}: telegram bridge auto-stopped`);
+    } catch { /* non-fatal */ }
+  }
+  if (project?.discord_auto) {
+    try {
+      await fetch(`http://127.0.0.1:${qwPort}/api/discord?action=stop`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: projectId }),
+        signal: AbortSignal.timeout(5000),
+      });
+      console.log(`[auto-bridge] ${projectId}: discord bridge auto-stopped`);
+    } catch { /* non-fatal */ }
+  }
+}
+
+async function autoStartBridges(projectId, project, qwPort) {
+  if (project?.telegram_auto) {
+    try {
+      // Check if already running before starting
+      const st = await fetch(
+        `http://127.0.0.1:${qwPort}/api/telegram?project=${encodeURIComponent(projectId)}`,
+        { signal: AbortSignal.timeout(5000) }
+      );
+      if (st.ok) {
+        const data = await st.json();
+        if (data.running) return; // already running
+        if (!data.configured) return; // not configured — can't start
+      }
+      await fetch(`http://127.0.0.1:${qwPort}/api/telegram?action=start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: projectId }),
+        signal: AbortSignal.timeout(10000),
+      });
+      console.log(`[auto-bridge] ${projectId}: telegram bridge auto-started`);
+    } catch { /* non-fatal */ }
+  }
+  if (project?.discord_auto) {
+    try {
+      const st = await fetch(
+        `http://127.0.0.1:${qwPort}/api/discord?project=${encodeURIComponent(projectId)}`,
+        { signal: AbortSignal.timeout(5000) }
+      );
+      if (st.ok) {
+        const data = await st.json();
+        if (data.running) return;
+        if (!data.configured) return;
+      }
+      await fetch(`http://127.0.0.1:${qwPort}/api/discord?action=start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: projectId }),
+        signal: AbortSignal.timeout(10000),
+      });
+      console.log(`[auto-bridge] ${projectId}: discord bridge auto-started`);
+    } catch { /* non-fatal */ }
+  }
+}
+
+// Track previous batch state per project for bridge auto-start detection
+const _bridgeBatchPrev = new Map();
+
 async function sendTriggerMessage(projectId) {
   const cfg = readConfig();
   const project = cfg.projects && cfg.projects.find((p) => p.id === projectId);
@@ -1326,6 +1402,8 @@ async function sendTriggerMessage(projectId) {
             caffeinateProcess = { process: null, pid: null, startedAt: null, duration: null };
             console.log(`[auto-trigger] ${projectId}: caffeinate auto-stopped (no active triggers remain)`);
           }
+          // #518: also stop bridges when batch completes
+          await autoStopBridges(projectId, project, qwPort);
           return;
         }
       }
@@ -1760,6 +1838,9 @@ function syncTriggersFromConfig() {
 // trigger (plus caffeinate when no triggers remain). This runs
 // independently of the trigger tick interval, so completion is
 // detected within 30s even if the operator is on a different page.
+// #518: also handles telegram_auto / discord_auto bridge lifecycle
+// (both start and stop) so bridges respond to batch transitions
+// even when the operator is viewing a different project page.
 
 const AUTO_STOP_POLL_INTERVAL_MS = 30_000;
 
@@ -1768,7 +1849,9 @@ async function autoStopPollingTick() {
   if (!cfg.projects) return;
 
   for (const project of cfg.projects) {
-    if (!project.trigger_auto || !triggers.has(project.id)) continue;
+    const hasTriggerAuto = project.trigger_auto && triggers.has(project.id);
+    const hasBridgeAuto = project.telegram_auto || project.discord_auto;
+    if (!hasTriggerAuto && !hasBridgeAuto) continue;
     const qwPort = cfg.port || 8400;
     try {
       const res = await fetch(
@@ -1776,13 +1859,31 @@ async function autoStopPollingTick() {
       );
       if (!res.ok) continue;
       const bp = await res.json();
+      const hasItems = bp.items && bp.items.length > 0;
+      const prev = _bridgeBatchPrev.get(project.id);
+      _bridgeBatchPrev.set(project.id, { complete: bp.complete, hasItems });
+
       if (bp && bp.complete) {
-        console.log(`[auto-trigger] ${project.id}: batch complete, auto-stopped (poller)`);
-        stopTrigger(project.id);
-        if (caffeinateProcess.process && triggers.size === 0) {
-          try { caffeinateProcess.process.kill("SIGTERM"); } catch {}
-          caffeinateProcess = { process: null, pid: null, startedAt: null, duration: null };
-          console.log(`[auto-trigger] ${project.id}: caffeinate auto-stopped (no active triggers remain)`);
+        if (hasTriggerAuto) {
+          console.log(`[auto-trigger] ${project.id}: batch complete, auto-stopped (poller)`);
+          stopTrigger(project.id);
+          if (caffeinateProcess.process && triggers.size === 0) {
+            try { caffeinateProcess.process.kill("SIGTERM"); } catch {}
+            caffeinateProcess = { process: null, pid: null, startedAt: null, duration: null };
+            console.log(`[auto-trigger] ${project.id}: caffeinate auto-stopped (no active triggers remain)`);
+          }
+        }
+        // #518: also stop bridges when batch completes
+        if (hasBridgeAuto) {
+          await autoStopBridges(project.id, project, qwPort);
+        }
+      }
+
+      // #518: detect batch-start transition → auto-start bridges
+      if (hasBridgeAuto && hasItems && !bp.complete) {
+        const isNewBatch = !prev || prev.complete || !prev.hasItems;
+        if (isNewBatch) {
+          await autoStartBridges(project.id, project, qwPort);
         }
       }
     } catch {
