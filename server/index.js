@@ -1301,6 +1301,38 @@ ALL: Communicate via this chat by tagging agents. Your terminal is NOT visible.`
 async function sendTriggerMessage(projectId) {
   const cfg = readConfig();
   const project = cfg.projects && cfg.projects.find((p) => p.id === projectId);
+
+  // #516: server-side auto-stop — check batch progress before sending.
+  // When trigger_auto is enabled, skip the message and stop the trigger
+  // (plus caffeinate) if the batch is already complete. This covers the
+  // case where the operator is on a different page and the client-side
+  // ScheduledTriggerWidget is not mounted to detect completion.
+  if (project && project.trigger_auto) {
+    const qwPort = cfg.port || 8400;
+    try {
+      const bpRes = await fetch(
+        `http://127.0.0.1:${qwPort}/api/batch-progress?project=${encodeURIComponent(projectId)}`
+      );
+      if (bpRes.ok) {
+        const bp = await bpRes.json();
+        if (bp && bp.complete) {
+          console.log(`[auto-trigger] ${projectId}: batch complete, auto-stopped`);
+          stopTrigger(projectId);
+          // Also stop caffeinate if running (#441 companion fix)
+          if (caffeinateProcess.process) {
+            try { caffeinateProcess.process.kill("SIGTERM"); } catch {}
+            caffeinateProcess = { process: null, pid: null, startedAt: null, duration: null };
+            console.log(`[auto-trigger] ${projectId}: caffeinate auto-stopped`);
+          }
+          return;
+        }
+      }
+    } catch (err) {
+      // Non-fatal — if batch-progress fails, proceed with the message
+      console.error(`[auto-trigger] ${projectId}: batch-progress check failed:`, err.message);
+    }
+  }
+
   const message = (project && project.trigger_message) || DEFAULT_MESSAGE;
 
   // #401 / quadwork#277: route trigger sends through the local
