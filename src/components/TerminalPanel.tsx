@@ -231,6 +231,12 @@ export default function TerminalPanel({
       };
 
       ws.onclose = async (e) => {
+        // #511: clear any running fit interval so it doesn't overlap
+        // with a new session's fit loop on reattach.
+        if (postReplayFitTimer) {
+          clearInterval(postReplayFitTimer);
+          postReplayFitTimer = null;
+        }
         if (cancelled) return;
         // #368: bounded polling probe of /api/sessions. A single
         // fixed-delay probe is timing-fragile — if the server-side
