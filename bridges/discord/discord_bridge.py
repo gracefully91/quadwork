@@ -283,32 +283,34 @@ _DEDUP_WINDOW = 60  # seconds
 def _should_forward(msg: dict, agents_only: bool = False) -> bool:
     """Return True if this AC message should be forwarded. Pure check, no side effects.
 
-    When *agents_only* is True (#525), the bridge applies the same strict
-    filter as the dashboard "Agents only" toggle — only agent + operator
-    chat messages are forwarded.
+    #525: ALL content filtering is controlled by the dashboard "Agents only"
+    toggle. When OFF, bridges forward everything (only dedup guard remains).
+    When ON, bridges apply the same filters as the dashboard's isSystemMessage.
     """
     sender = msg.get("sender", "")
     text = msg.get("text", "")
     msg_type = msg.get("type", "chat")
 
-    # Skip join/leave system messages (online, disconnected, timeout)
-    if msg_type in ("join", "leave"):
-        return False
-
-    # Skip system sender entirely
-    if sender == "system":
-        return False
-
-    # Pattern-based filter for edge cases
-    for pat in _NOISE_PATTERNS:
-        if pat.search(text):
+    # #525: content filtering only when agents_only is enabled
+    if agents_only:
+        # Skip join/leave system messages (online, disconnected, timeout)
+        if msg_type in ("join", "leave"):
             return False
 
-    # #525: when agents_only mode is active, also filter Loop guard messages
-    if agents_only and "Loop guard:" in text:
-        return False
+        # Skip system sender entirely
+        if sender == "system":
+            return False
 
-    # Dedup: suppress identical (sender, text) within window
+        # Pattern-based filter — matches dashboard's isSystemMessage patterns
+        for pat in _NOISE_PATTERNS:
+            if pat.search(text):
+                return False
+
+        # Loop guard messages
+        if "Loop guard:" in text:
+            return False
+
+    # Dedup: suppress identical (sender, text) within window (always on)
     key = (sender, text)
     now = time.time()
     last = _last_forwarded.get(key)
