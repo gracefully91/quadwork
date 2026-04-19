@@ -227,7 +227,7 @@ export default function DiscordBridgeWidget({ projectId }: DiscordBridgeWidgetPr
   const configured = !!status?.configured;
   const running = !!status?.running;
   useEffect(() => { runningRef.current = running; }, [running]);
-  // #522: suppress last_error when bridge was intentionally stopped
+  // #522: suppress last_error when bridge was auto-stopped
   const suppressLastError = !running && !!autoStatus;
   const displayError = actionError || pollError || (!running && !suppressLastError && status?.last_error) || "";
 

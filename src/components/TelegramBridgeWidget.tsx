@@ -256,9 +256,9 @@ export default function TelegramBridgeWidget({ projectId }: TelegramBridgeWidget
   // Rendered as a dedicated multi-line block below the controls
   // (not a truncated span in the header) so long Python tracebacks
   // from dep-check / spawn failures are actually readable.
-  // #522: suppress last_error when bridge was intentionally stopped
-  // (auto-stop or manual stop) — stale connection-refused logs are not
-  // relevant after the bridge has been deliberately paused.
+  // #522: suppress last_error when bridge was auto-stopped — stale
+  // connection-refused logs are not relevant after the bridge has been
+  // deliberately paused. Manual stop is handled server-side (log truncation).
   const suppressLastError = !running && !!autoStatus;
   const displayError = actionError || pollError || (!running && !suppressLastError && status?.last_error) || "";
 
