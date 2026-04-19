@@ -25,19 +25,48 @@ export default function ProjectDashboard({ projectId }: ProjectDashboardProps) {
   const dragging = useRef<"col" | "row" | null>(null);
   const [agentStates, setAgentStates] = useState<Record<string, AgentState>>({});
 
-  // #523: system message filter — lifted here so the toggle renders
-  // inline in PanelHeader while ChatPanel consumes the value.
-  const [filterSystem, setFilterSystem] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return localStorage.getItem("chatFilterSystem") === "1";
-  });
+  // #523/#525: system message filter — source of truth is the per-project
+  // config (bridge_filter_agents_only), so dashboard and bridges stay in sync.
+  const [filterSystem, setFilterSystem] = useState(false);
+  const filterLoadedRef = useRef(false);
+  useEffect(() => {
+    filterLoadedRef.current = false;
+    setFilterSystem(false);
+  }, [projectId]);
+  useEffect(() => {
+    if (filterLoadedRef.current) return;
+    fetch("/api/config")
+      .then((r) => r.ok ? r.json() : null)
+      .then((cfg) => {
+        if (!cfg) return;
+        const entry = (cfg.projects || []).find((p: { id: string }) => p.id === projectId);
+        if (entry?.bridge_filter_agents_only) setFilterSystem(true);
+        filterLoadedRef.current = true;
+      })
+      .catch(() => {});
+  }, [projectId]);
   const toggleFilter = useCallback(() => {
     setFilterSystem((prev) => {
       const next = !prev;
-      localStorage.setItem("chatFilterSystem", next ? "1" : "0");
+      // #525: persist to project config so bridges respect the filter
+      fetch("/api/config")
+        .then((r) => r.ok ? r.json() : null)
+        .then((cfg) => {
+          if (!cfg) return;
+          const entry = (cfg.projects || []).find((p: { id: string }) => p.id === projectId);
+          if (entry) {
+            entry.bridge_filter_agents_only = next;
+            return fetch("/api/config", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(cfg),
+            });
+          }
+        })
+        .catch(() => {});
       return next;
     });
-  }, []);
+  }, [projectId]);
   const filterToggle = useMemo(() => (
     <button
       type="button"
