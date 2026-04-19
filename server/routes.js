@@ -2315,7 +2315,7 @@ router.post("/api/rename", (req, res) => {
 const BRIDGE_DIR = path.join(CONFIG_DIR, "agentchattr-telegram");
 // #444: pin agentchattr-telegram to a known commit (same pattern as
 // AGENTCHATTR_PIN in bin/quadwork.js for bcurts/agentchattr).
-const AGENTCHATTR_TELEGRAM_PIN = "03753c5e4f4497fb7a4a4da639faf31a61d9a4ac";
+const AGENTCHATTR_TELEGRAM_PIN = "045ee18f6d5dbcd0bd45d5ab29f06e2a27382aaf";
 
 function telegramPidFile(projectId) {
   return path.join(CONFIG_DIR, `tg-bridge-${projectId}.pid`);
@@ -2364,7 +2364,8 @@ function buildTelegramBridgeToml(tg, projectId) {
     `bot_token = "${tg.bot_token}"\n` +
     `chat_id = "${tg.chat_id}"\n` +
     `agentchattr_url = "${tg.agentchattr_url}"\n` +
-    `cursor_file = "${cursorFile}"\n`
+    `cursor_file = "${cursorFile}"\n` +
+    `project_id = "${projectId}"\n`
   );
 }
 
