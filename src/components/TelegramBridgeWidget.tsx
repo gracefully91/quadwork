@@ -215,6 +215,7 @@ export default function TelegramBridgeWidget({ projectId }: TelegramBridgeWidget
         }
         if (hasItems && data.complete && runningRef.current) {
           setAutoStatus("Batch complete — bridge paused. Waiting for next batch.");
+          setActionError(null); // #522: clear stale action errors on auto-stop
           await callTelegram("stop", { project_id: projectId }).catch(() => {});
           await load();
         }
@@ -224,6 +225,7 @@ export default function TelegramBridgeWidget({ projectId }: TelegramBridgeWidget
       // Batch just completed → auto-stop
       if (hasItems && data.complete && !prev.complete && runningRef.current) {
         setAutoStatus("Batch complete — bridge paused. Waiting for next batch.");
+        setActionError(null); // #522: clear stale action errors on auto-stop
         await callTelegram("stop", { project_id: projectId }).catch(() => {});
         await load();
         return;
@@ -254,7 +256,11 @@ export default function TelegramBridgeWidget({ projectId }: TelegramBridgeWidget
   // Rendered as a dedicated multi-line block below the controls
   // (not a truncated span in the header) so long Python tracebacks
   // from dep-check / spawn failures are actually readable.
-  const displayError = actionError || pollError || (!running && status?.last_error) || "";
+  // #522: suppress last_error when bridge was intentionally stopped
+  // (auto-stop or manual stop) — stale connection-refused logs are not
+  // relevant after the bridge has been deliberately paused.
+  const suppressLastError = !running && !!autoStatus;
+  const displayError = actionError || pollError || (!running && !suppressLastError && status?.last_error) || "";
 
   return (
     <>
