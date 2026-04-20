@@ -1822,8 +1822,17 @@ wss.on("connection", async (ws, req) => {
     const str = msg.toString();
     try {
       const parsed = JSON.parse(str);
-      if (parsed.type === "resize" && parsed.cols && parsed.rows) {
-        session.term.resize(parsed.cols, parsed.rows);
+      if (parsed.type === "resize") {
+        // #541: strict numeric type check and bounds validation before
+        // passing to PTY. The dashboard client (TerminalPanel.tsx) sends
+        // xterm.js cols/rows which are always numbers. Reject anything
+        // else at the boundary.
+        if (typeof parsed.cols === "number" && typeof parsed.rows === "number" &&
+            Number.isFinite(parsed.cols) && Number.isFinite(parsed.rows) &&
+            parsed.cols >= 1 && parsed.cols <= 500 &&
+            parsed.rows >= 1 && parsed.rows <= 500) {
+          session.term.resize(parsed.cols, parsed.rows);
+        }
         return;
       }
       // #461: client requests scrollback replay after xterm is fully
