@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const { execSync, spawn } = require("child_process");
+const { execFileSync, execSync, spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
@@ -67,16 +67,16 @@ function spinner(msg) {
   };
 }
 
-function run(cmd, opts = {}) {
+function run(cmd, args = [], opts = {}) {
   try {
-    return execSync(cmd, { encoding: "utf-8", stdio: "pipe", ...opts }).trim();
+    return execFileSync(cmd, args, { encoding: "utf-8", stdio: "pipe", ...opts }).trim();
   } catch {
     return null;
   }
 }
 
 function which(cmd) {
-  return run(`which ${cmd}`) !== null;
+  return run("which", [cmd]) !== null;
 }
 
 /**
@@ -202,7 +202,7 @@ function installAgentChattr(dir) {
       // Synchronous sleep — installAgentChattr is itself synchronous and
       // is called from the CLI wizard, where blocking is acceptable.
       // Use execSync('sleep') instead of a busy-wait so we don't pin a CPU.
-      try { require("child_process").execSync(`sleep ${INSTALL_LOCK_POLL_MS / 1000}`); }
+      try { require("child_process").execFileSync("sleep", [String(INSTALL_LOCK_POLL_MS / 1000)], { stdio: "pipe" }); }
       catch { /* sleep interrupted; loop will recheck */ }
     }
   }
@@ -231,7 +231,7 @@ function _installAgentChattrLocked(dir, setError) {
         catch (e) { return setError(`Cannot remove empty dir ${dir}: ${e.message}`); }
       } else if (fs.existsSync(path.join(dir, ".git"))) {
         // Only remove if origin remote positively identifies this as agentchattr.
-        const remote = run(`git -C "${dir}" remote get-url origin 2>/dev/null`);
+        const remote = run("git", ["-C", dir, "remote", "get-url", "origin"]);
         if (remote && remote.includes("agentchattr")) {
           try { fs.rmSync(dir, { recursive: true, force: true }); }
           catch (e) { return setError(`Cannot remove failed clone at ${dir}: ${e.message}`); }
@@ -245,7 +245,7 @@ function _installAgentChattrLocked(dir, setError) {
     // Ensure parent exists before clone (supports arbitrary nested paths).
     try { fs.mkdirSync(path.dirname(dir), { recursive: true }); }
     catch (e) { return setError(`Cannot create parent of ${dir}: ${e.message}`); }
-    const cloneResult = run(`git clone "${AGENTCHATTR_REPO}" "${dir}" 2>&1`, { timeout: 60000 });
+    const cloneResult = run("git", ["clone", AGENTCHATTR_REPO, dir], { timeout: 60000 });
     if (cloneResult === null) return setError(`git clone of ${AGENTCHATTR_REPO} into ${dir} failed`);
     if (!fs.existsSync(runPy)) return setError(`Clone completed but run.py missing at ${dir}`);
     // #348: pin to the known-good AgentChattr commit shipped with
@@ -261,7 +261,7 @@ function _installAgentChattrLocked(dir, setError) {
     // On failure (commit unreachable / force-pushed away), fall
     // back to the default branch with a loud warning instead of
     // hard-failing the install.
-    const pinResult = run(`git -C "${dir}" checkout -B pinned ${AGENTCHATTR_PIN} 2>&1`, { timeout: 30000 });
+    const pinResult = run("git", ["-C", dir, "checkout", "-B", "pinned", AGENTCHATTR_PIN], { timeout: 30000 });
     if (pinResult === null) {
       try { console.warn(`[quadwork] WARNING: could not check out AgentChattr pin ${AGENTCHATTR_PIN} at ${dir}; falling back to default branch. The upstream commit may have been force-pushed away — update AGENTCHATTR_PIN in bin/quadwork.js for reproducible installs.`); } catch {}
     }
@@ -274,10 +274,10 @@ function _installAgentChattrLocked(dir, setError) {
     // clone is on a different SHA (drift) or already on a named
     // branch (operator may have set up their own work branch on
     // top); doctor will flag drift cases.
-    const headSha = (run(`git -C "${dir}" rev-parse HEAD 2>&1`) || "").trim();
-    const headRef = (run(`git -C "${dir}" symbolic-ref --quiet HEAD 2>&1`) || "").trim();
+    const headSha = (run("git", ["-C", dir, "rev-parse", "HEAD"]) || "").trim();
+    const headRef = (run("git", ["-C", dir, "symbolic-ref", "--quiet", "HEAD"]) || "").trim();
     if (headSha === AGENTCHATTR_PIN && !headRef) {
-      const migrateResult = run(`git -C "${dir}" checkout -B pinned ${AGENTCHATTR_PIN} 2>&1`, { timeout: 30000 });
+      const migrateResult = run("git", ["-C", dir, "checkout", "-B", "pinned", AGENTCHATTR_PIN], { timeout: 30000 });
       if (migrateResult === null) {
         try { console.warn(`[quadwork] WARNING: could not migrate ${dir} from detached HEAD to the 'pinned' branch.`); } catch {}
       }
@@ -286,7 +286,7 @@ function _installAgentChattrLocked(dir, setError) {
 
   // 2. Create venv if missing.
   if (!fs.existsSync(venvPython)) {
-    const venvResult = run(`python3 -m venv "${path.join(dir, ".venv")}" 2>&1`, { timeout: 60000 });
+    const venvResult = run("python3", ["-m", "venv", path.join(dir, ".venv")], { timeout: 60000 });
     if (venvResult === null) return setError(`python3 -m venv failed at ${dir}/.venv (is python3 installed?)`);
     if (!fs.existsSync(venvPython)) return setError(`venv created but ${venvPython} missing`);
     venvJustCreated = true;
@@ -297,7 +297,7 @@ function _installAgentChattrLocked(dir, setError) {
   if (venvJustCreated) {
     const reqFile = path.join(dir, "requirements.txt");
     if (fs.existsSync(reqFile)) {
-      const pipResult = run(`"${venvPython}" -m pip install -r "${reqFile}" 2>&1`, { timeout: 120000 });
+      const pipResult = run(venvPython, ["-m", "pip", "install", "-r", reqFile], { timeout: 120000 });
       if (pipResult === null) return setError(`pip install -r ${reqFile} failed`);
     }
   }
@@ -432,8 +432,8 @@ function detectPlatform() {
 }
 
 async function tryInstall(rl, name, description, commands, { platform } = {}) {
-  const cmd = typeof commands === "function" ? commands(platform) : commands;
-  if (!cmd) {
+  const cmdSpec = typeof commands === "function" ? commands(platform) : commands;
+  if (!cmdSpec) {
     warn(`${name} cannot be auto-installed on your system.`);
     return false;
   }
@@ -445,7 +445,8 @@ async function tryInstall(rl, name, description, commands, { platform } = {}) {
     return false;
   }
   const sp = spinner(`Installing ${name}...`);
-  const result = run(`${cmd} 2>&1`, { timeout: 120000 });
+  const [cmd, ...args] = cmdSpec;
+  const result = run(cmd, args, { timeout: 120000 });
   if (result !== null) {
     sp.stop(true);
     return true;
@@ -463,7 +464,7 @@ async function checkPrereqs(rl) {
   let hasPython = false;
 
   // ── 1. Node.js 20+ (must already exist — user ran npx) ──
-  const nodeVer = run("node --version");
+  const nodeVer = run("node", ["--version"]);
   if (nodeVer) {
     const major = parseInt(nodeVer.replace("v", "").split(".")[0], 10);
     if (major >= 20) {
@@ -499,7 +500,7 @@ async function checkPrereqs(rl) {
   }
 
   // ── 3. Python 3.10+ (manual install — guide only) ──
-  const pyVer = run("python3 --version");
+  const pyVer = run("python3", ["--version"]);
   if (pyVer) {
     const parts = pyVer.replace("Python ", "").split(".");
     const minor = parseInt(parts[1], 10);
@@ -577,9 +578,9 @@ async function checkPrereqs(rl) {
     console.log("");
     warn("GitHub CLI is required for agents to create branches, PRs, and reviews.");
     const ghCmd = (p) => {
-      if (p === "macos") return "brew install gh";
-      if (p === "linux-apt") return "sudo apt install gh -y";
-      if (p === "linux-dnf") return "sudo dnf install gh -y";
+      if (p === "macos") return ["brew", "install", "gh"];
+      if (p === "linux-apt") return ["sudo", "apt", "install", "gh", "-y"];
+      if (p === "linux-dnf") return ["sudo", "dnf", "install", "gh", "-y"];
       return null;
     };
     const cmd = ghCmd(platform);
@@ -623,7 +624,11 @@ async function checkPrereqs(rl) {
     if (installClaude) {
       log(`Running: ${npmPrefix}npm install -g @anthropic-ai/claude-code`);
       try {
-        execSync(`${npmPrefix}npm install -g @anthropic-ai/claude-code`, { stdio: "inherit", timeout: 120000 });
+        if (npmPrefix) {
+          execFileSync("sudo", ["npm", "install", "-g", "@anthropic-ai/claude-code"], { stdio: "inherit", timeout: 120000 });
+        } else {
+          execFileSync("npm", ["install", "-g", "@anthropic-ai/claude-code"], { stdio: "inherit", timeout: 120000 });
+        }
         hasClaude = which("claude");
         if (hasClaude) ok("Claude Code installed");
         else warn(`Install seemed to succeed but 'claude' not found on PATH. Try restarting your terminal.`);
@@ -645,7 +650,11 @@ async function checkPrereqs(rl) {
     if (installCodex) {
       log(`Running: ${npmPrefix}npm install -g @openai/codex`);
       try {
-        execSync(`${npmPrefix}npm install -g @openai/codex`, { stdio: "inherit", timeout: 120000 });
+        if (npmPrefix) {
+          execFileSync("sudo", ["npm", "install", "-g", "@openai/codex"], { stdio: "inherit", timeout: 120000 });
+        } else {
+          execFileSync("npm", ["install", "-g", "@openai/codex"], { stdio: "inherit", timeout: 120000 });
+        }
         hasCodex = which("codex");
         if (hasCodex) ok("Codex CLI installed");
         else warn(`Install seemed to succeed but 'codex' not found on PATH. Try restarting your terminal.`);
@@ -668,7 +677,7 @@ async function checkPrereqs(rl) {
     console.log("");
 
     // GitHub CLI auth
-    const ghAuth = run("gh auth status 2>&1");
+    const ghAuth = run("gh", ["auth", "status"]);
     if (ghAuth && ghAuth.includes("Logged in")) {
       ok("GitHub CLI — authenticated");
     } else {
@@ -693,7 +702,7 @@ async function checkPrereqs(rl) {
 
     // Claude Code auth
     if (hasClaude) {
-      const claudeAuth = run("claude auth status 2>&1") || run("claude --version 2>&1");
+      const claudeAuth = run("claude", ["auth", "status"]) || run("claude", ["--version"]);
       if (claudeAuth && (claudeAuth.includes("authenticated") || claudeAuth.includes("Logged in") || claudeAuth.includes("@"))) {
         ok("Claude Code — authenticated");
       } else {
@@ -717,7 +726,7 @@ async function checkPrereqs(rl) {
 
     // Codex CLI auth
     if (hasCodex) {
-      const codexAuth = run("codex login status 2>&1") || run("codex --version 2>&1");
+      const codexAuth = run("codex", ["login", "status"]) || run("codex", ["--version"]);
       if (codexAuth && (codexAuth.includes("authenticated") || codexAuth.includes("Logged in") || codexAuth.includes("@"))) {
         ok("Codex CLI — authenticated");
       } else {
@@ -759,7 +768,7 @@ async function setupGitHub(rl) {
   header("Step 2: GitHub Connection");
 
   // Check auth
-  const authStatus = run("gh auth status 2>&1");
+  const authStatus = run("gh", ["auth", "status"]);
   if (authStatus && authStatus.includes("Logged in")) {
     ok("GitHub authenticated");
   } else {
@@ -776,7 +785,7 @@ async function setupGitHub(rl) {
 
   // Verify repo exists
   const sp = spinner(`Verifying ${repo}...`);
-  const repoCheck = run(`gh repo view ${repo} --json name 2>&1`);
+  const repoCheck = run("gh", ["repo", "view", repo, "--json", "name"]);
   if (repoCheck && repoCheck.includes('"name"')) {
     sp.stop(true);
   } else {
@@ -873,11 +882,11 @@ async function setupAgents(rl, repo) {
   const wtSpinner = spinner("Creating worktrees and seeding files...");
 
   // Empty repos have no commits — git worktree add requires at least one.
-  const headCheck = run(`git -C "${absDir}" rev-parse HEAD 2>&1`);
+  const headCheck = run("git", ["-C", absDir, "rev-parse", "HEAD"]);
   if (!headCheck || headCheck.includes("fatal")) {
-    run(`git -C "${absDir}" commit --allow-empty -m "Initial commit (created by QuadWork setup)"`);
-    const defaultBranch = run(`git -C "${absDir}" symbolic-ref --short HEAD 2>&1`) || "main";
-    run(`git -C "${absDir}" push origin ${defaultBranch} 2>&1`);
+    run("git", ["-C", absDir, "commit", "--allow-empty", "-m", "Initial commit (created by QuadWork setup)"]);
+    const defaultBranch = run("git", ["-C", absDir, "symbolic-ref", "--short", "HEAD"]) || "main";
+    run("git", ["-C", absDir, "push", "origin", defaultBranch]);
   }
 
   const worktrees = {};
@@ -886,10 +895,10 @@ async function setupAgents(rl, repo) {
     const wtDir = path.join(path.dirname(absDir), `${projectName}-${agent}`);
     if (!fs.existsSync(wtDir)) {
       const branchName = `worktree-${agent}`;
-      run(`git -C "${absDir}" branch ${branchName} HEAD 2>&1`);
-      const result = run(`git -C "${absDir}" worktree add "${wtDir}" ${branchName} 2>&1`);
+      run("git", ["-C", absDir, "branch", branchName, "HEAD"]);
+      const result = run("git", ["-C", absDir, "worktree", "add", wtDir, branchName]);
       if (!result) {
-        const result2 = run(`git -C "${absDir}" worktree add --detach "${wtDir}" HEAD 2>&1`);
+        const result2 = run("git", ["-C", absDir, "worktree", "add", "--detach", wtDir, "HEAD"]);
         if (!result2) { wtFailed = agent; break; }
       }
     }
@@ -1055,7 +1064,7 @@ async function setupAddons(rl, setup, configTomlPath) {
     const telegramDir = path.join(path.dirname(setup.absDir), "agentchattr-telegram");
     if (!fs.existsSync(telegramDir)) {
       const cloneSpinner = spinner("Cloning agentchattr-telegram...");
-      const cloneResult = run(`git clone https://github.com/realproject7/agentchattr-telegram.git "${telegramDir}" 2>&1`);
+      const cloneResult = run("git", ["clone", "https://github.com/realproject7/agentchattr-telegram.git", telegramDir]);
       cloneSpinner.stop(cloneResult !== null);
       if (!cloneResult) { warn("You can set it up manually later"); }
     } else {
@@ -1065,8 +1074,8 @@ async function setupAddons(rl, setup, configTomlPath) {
     // upgrade (existing clone may be on an older pin with stale
     // bridge_sender defaults).
     if (fs.existsSync(telegramDir)) {
-      run(`git -C "${telegramDir}" fetch origin 2>&1`, { timeout: 30000 });
-      const pinResult = run(`git -C "${telegramDir}" checkout -B pinned ${AGENTCHATTR_TELEGRAM_PIN} 2>&1`, { timeout: 30000 });
+      run("git", ["-C", telegramDir, "fetch", "origin"], { timeout: 30000 });
+      const pinResult = run("git", ["-C", telegramDir, "checkout", "-B", "pinned", AGENTCHATTR_TELEGRAM_PIN], { timeout: 30000 });
       if (pinResult === null) {
         try { console.warn(`[quadwork] WARNING: could not check out agentchattr-telegram pin ${AGENTCHATTR_TELEGRAM_PIN} at ${telegramDir}; falling back to default branch.`); } catch {}
       }
@@ -1076,7 +1085,7 @@ async function setupAddons(rl, setup, configTomlPath) {
       const reqFile = path.join(telegramDir, "requirements.txt");
       if (fs.existsSync(reqFile)) {
         const tgSpinner = spinner("Installing Telegram Bridge dependencies...");
-        const tgResult = run(`pip install -r "${reqFile}" 2>&1`);
+        const tgResult = run("pip", ["install", "-r", reqFile]);
         tgSpinner.stop(tgResult !== null);
       }
 
@@ -1371,7 +1380,7 @@ async function cmdInit() {
     // Schedule browser open after the server has had a moment to bind.
     const openCmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
     setTimeout(() => {
-      try { execSync(`${openCmd} ${dashboardUrl}/setup`, { stdio: "ignore" }); } catch {}
+      try { execFileSync(openCmd, [`${dashboardUrl}/setup`], { stdio: "ignore" }); } catch {}
     }, 1500);
 
     // Run the server in the foreground. require() starts the express
@@ -1679,7 +1688,7 @@ function cmdStart() {
   const dashboardUrl = `http://127.0.0.1:${port}`;
   const openCmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
   setTimeout(() => {
-    try { execSync(`${openCmd} ${dashboardUrl}`, { stdio: "ignore" }); } catch {}
+    try { execFileSync(openCmd, [dashboardUrl], { stdio: "ignore" }); } catch {}
   }, 1500);
 
   // Run server in foreground. Capture exports so the SIGINT handler
@@ -1749,7 +1758,7 @@ function cmdStop() {
     const cfg = readConfig();
     const qwPort = cfg.port || 8400;
     try {
-      const result = run(`curl -s -X POST http://127.0.0.1:${qwPort}/api/caffeinate/stop 2>/dev/null`);
+      const result = run("curl", ["-s", "-X", "POST", `http://127.0.0.1:${qwPort}/api/caffeinate/stop`]);
       if (result && result.includes('"ok":true')) {
         ok("Stopped caffeinate (sleep prevention)");
         stopped++;
@@ -1921,7 +1930,7 @@ function cmdDoctor() {
   console.log("");
   const cloneShaAt = (dir) => {
     if (!fs.existsSync(path.join(dir, ".git"))) return null;
-    const sha = run(`git -C "${dir}" rev-parse HEAD 2>&1`);
+    const sha = run("git", ["-C", dir, "rev-parse", "HEAD"]);
     return sha ? sha.trim() : null;
   };
   // #366: surface whether the clone is on the named `pinned`
@@ -1929,7 +1938,7 @@ function cmdDoctor() {
   // Detached-HEAD-but-on-pin gets a soft warning so operators
   // know to re-run install (which auto-migrates) or re-clone.
   const cloneBranchAt = (dir) => {
-    const ref = run(`git -C "${dir}" symbolic-ref --quiet HEAD 2>&1`);
+    const ref = run("git", ["-C", dir, "symbolic-ref", "--quiet", "HEAD"]);
     if (!ref) return null; // detached
     return ref.trim().replace(/^refs\/heads\//, "");
   };

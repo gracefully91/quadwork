@@ -47,7 +47,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const http = require("http");
-const { spawn, execSync, spawnSync } = require("child_process");
+const { spawn, execFileSync, execSync, spawnSync } = require("child_process");
 
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(name);
@@ -89,7 +89,7 @@ function installLocalClone(perProjectDir) {
     fs.mkdirSync(path.dirname(perProjectDir), { recursive: true });
     if (!fs.existsSync(perProjectDir)) {
       log(`  git clone ${LOCAL_SOURCE} → ${perProjectDir}`);
-      execSync(`git clone "${LOCAL_SOURCE}" "${perProjectDir}"`, { stdio: "inherit" });
+      execFileSync("git", ["clone", LOCAL_SOURCE, perProjectDir], { stdio: "inherit" });
     }
     const venvDir = path.join(perProjectDir, ".venv");
     if (!fs.existsSync(venvDir)) {
@@ -171,7 +171,7 @@ function waitForPort(port, timeoutMs = 30000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     if (lsofPort(port)) return true;
-    try { execSync("sleep 0.25"); } catch {}
+    try { execFileSync("sleep", ["0.25"], { stdio: "pipe" }); } catch {}
   }
   return false;
 }
@@ -333,7 +333,7 @@ function killPidsOnPorts(ports) {
   let bReleased = false;
   for (let i = 0; i < 40; i++) {
     if (!lsofPort(b.chattrPort)) { bReleased = true; break; }
-    try { execSync("sleep 0.25"); } catch {}
+    try { execFileSync("sleep", ["0.25"], { stdio: "pipe" }); } catch {}
   }
   if (!bReleased) fail("project-b did not release 8361 within 10s after SIGTERM");
   else ok("project-b released 8361");
@@ -375,13 +375,13 @@ function killPidsOnPorts(ports) {
   console.log("\n--- shutdown ---");
   cleanup();
   // Give cmdStart's SIGINT handler a moment to fan out SIGTERMs.
-  for (let i = 0; i < 12; i++) { try { execSync("sleep 0.25"); } catch {} }
+  for (let i = 0; i < 12; i++) { try { execFileSync("sleep", ["0.25"], { stdio: "pipe" }); } catch {} }
   killPidsOnPorts(PROJECTS.flatMap((p) => [p.chattrPort, p.mcpHttp, p.mcpSse]));
   for (const p of PROJECTS) {
     let released = false;
     for (let i = 0; i < 40; i++) {
       if (!lsofPort(p.chattrPort) && !lsofPort(p.mcpHttp) && !lsofPort(p.mcpSse)) { released = true; break; }
-      try { execSync("sleep 0.25"); } catch {}
+      try { execFileSync("sleep", ["0.25"], { stdio: "pipe" }); } catch {}
     }
     if (released) ok(`${p.id} released chat ${p.chattrPort} + mcp_http ${p.mcpHttp} + mcp_sse ${p.mcpSse}`);
     else fail(`${p.id} did not release ports`);
@@ -389,7 +389,7 @@ function killPidsOnPorts(ports) {
   let dashReleased = false;
   for (let i = 0; i < 20; i++) {
     if (!lsofPort(DASHBOARD_PORT)) { dashReleased = true; break; }
-    try { execSync("sleep 0.25"); } catch {}
+    try { execFileSync("sleep", ["0.25"], { stdio: "pipe" }); } catch {}
   }
   if (dashReleased) ok(`dashboard released ${DASHBOARD_PORT}`);
   else fail(`dashboard did not release ${DASHBOARD_PORT}`);
