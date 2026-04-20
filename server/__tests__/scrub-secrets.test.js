@@ -1,44 +1,19 @@
 /**
  * #545: QA verification for #538 PTY scrollback secret scrubbing.
  *
- * Tests that scrubSecrets / scrubScrollback:
+ * Tests the production scrubSecrets / scrubScrollback from server/scrub-secrets.js:
  *  - Redact secrets correctly (SECRET_NAME, API key prefixes, Bearer)
  *  - Pass through normal terminal output unchanged
  *  - Preserve ANSI escape codes on non-secret lines
  *  - Handle edge cases (empty input, very long lines, rapid multi-line output)
+ *
+ * Integration-level checklist items (resize, reconnect/replay flow,
+ * multi-agent isolation, two-tab behavior) are verified by code-path
+ * analysis in the PR description — they depend on WS + PTY runtime
+ * that cannot be unit-tested without a full server harness.
  */
 
-// --- Extract the scrub functions from server/index.js ---
-// They are module-private, so we recreate them identically here
-// and verify behaviour. If the canonical implementation diverges,
-// this test will still serve as a spec for the expected contract.
-
-const _SECRET_NAME_RE = /\b\w*(KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|PASSPHRASE|AUTH)\w*\s*[=:]/i;
-const _API_KEY_PREFIX_RE = /\b(sk-ant-api\d{2}-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{36,}|ghu_[A-Za-z0-9]{36,}|ghs_[A-Za-z0-9]{36,}|sk-[A-Za-z0-9]{20,}|xoxb-[A-Za-z0-9-]{20,}|xoxp-[A-Za-z0-9-]{20,})\b/;
-const _BEARER_RE = /\bBearer\s+[A-Za-z0-9_.+/=-]{20,}/i;
-const _REDACTED = "[REDACTED]";
-
-function scrubSecrets(text) {
-  if (!text) return text;
-  return text.split("\n").map((line) => {
-    const plain = line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
-    if (_SECRET_NAME_RE.test(plain)) {
-      return line.replace(/([=:])\s*\S.*/, `$1 ${_REDACTED}`);
-    }
-    if (_API_KEY_PREFIX_RE.test(plain)) {
-      return line.replace(_API_KEY_PREFIX_RE, _REDACTED);
-    }
-    if (_BEARER_RE.test(plain)) {
-      return line.replace(/\bBearer\s+[A-Za-z0-9_.+/=-]{20,}/gi, `Bearer ${_REDACTED}`);
-    }
-    return line;
-  }).join("\n");
-}
-
-function scrubScrollback(buf) {
-  if (!buf || buf.length === 0) return buf;
-  return Buffer.from(scrubSecrets(buf.toString("utf-8")), "utf-8");
-}
+const { scrubSecrets, scrubScrollback, _REDACTED } = require("../scrub-secrets");
 
 // ---- Tests ----
 
@@ -58,7 +33,7 @@ function test(name, fn) {
   }
 }
 
-console.log("\n#545 QA — scrubSecrets / scrubScrollback\n");
+console.log("\n#545 QA — scrubSecrets / scrubScrollback (production module)\n");
 
 // --- 1. Secret redaction (true positives) ---
 
@@ -222,6 +197,35 @@ test("scrubScrollback preserves non-secret content", () => {
   const buf = Buffer.from(content);
   const out = scrubScrollback(buf);
   assert.strictEqual(out.toString(), content);
+});
+
+// --- 6. Integration path verification ---
+// These tests verify that server/index.js imports from the same module
+// we're testing, ensuring no copy-paste drift.
+
+test("server/index.js imports scrubSecrets from scrub-secrets.js", () => {
+  const serverSource = require("fs").readFileSync(
+    require("path").join(__dirname, "..", "index.js"), "utf-8"
+  );
+  assert(
+    serverSource.includes('require("./scrub-secrets")') ||
+    serverSource.includes("require('./scrub-secrets')"),
+    "server/index.js must import from ./scrub-secrets"
+  );
+});
+
+test("server/index.js uses scrubSecrets in PTY data handler", () => {
+  const serverSource = require("fs").readFileSync(
+    require("path").join(__dirname, "..", "index.js"), "utf-8"
+  );
+  assert(serverSource.includes("scrubSecrets(data)"), "live PTY path must call scrubSecrets");
+});
+
+test("server/index.js uses scrubScrollback in replay handler", () => {
+  const serverSource = require("fs").readFileSync(
+    require("path").join(__dirname, "..", "index.js"), "utf-8"
+  );
+  assert(serverSource.includes("scrubScrollback(session.scrollback)"), "replay path must call scrubScrollback");
 });
 
 // --- Summary ---
