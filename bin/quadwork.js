@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const { execFileSync, execSync, spawn } = require("child_process");
+const { execFileSync, spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
@@ -201,7 +201,7 @@ function installAgentChattr(dir) {
       }
       // Synchronous sleep — installAgentChattr is itself synchronous and
       // is called from the CLI wizard, where blocking is acceptable.
-      // Use execSync('sleep') instead of a busy-wait so we don't pin a CPU.
+      // Use execFileSync('sleep') instead of a busy-wait so we don't pin a CPU.
       try { require("child_process").execFileSync("sleep", [String(INSTALL_LOCK_POLL_MS / 1000)], { stdio: "pipe" }); }
       catch { /* sleep interrupted; loop will recheck */ }
     }

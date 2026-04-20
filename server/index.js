@@ -43,7 +43,7 @@ app.get("/api/health", (_req, res) => {
 
 // --- CLI status detection ---
 
-const { execFileSync, execSync } = require("child_process");
+const { execFileSync } = require("child_process");
 
 function isCliInstalled(cmd) {
   try {
@@ -1045,8 +1045,6 @@ async function handleAgentChattr(req, res) {
       return res.status(400).json({ ok: false, error: "AgentChattr not installed at " + (acDir || "unknown") });
     }
     try {
-      const { execSync } = require("child_process");
-
       // Stop running process before pulling. Snapshot first so a
       // botched git pull can still be rolled back from disk.
       // #424 / quadwork#304: best-effort.

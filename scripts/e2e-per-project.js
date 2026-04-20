@@ -47,7 +47,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const http = require("http");
-const { spawn, execFileSync, execSync, spawnSync } = require("child_process");
+const { spawn, execFileSync, spawnSync } = require("child_process");
 
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(name);

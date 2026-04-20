@@ -14,7 +14,7 @@
 // Self-contained — depends only on Node built-ins so it's safe to require
 // from anywhere in the project (CLI bin, server routes, future tests).
 
-const { execFileSync, execSync } = require("child_process");
+const { execFileSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
