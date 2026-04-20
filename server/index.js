@@ -1886,7 +1886,8 @@ async function autoStopPollingTick() {
           }
         }
         // #518: also stop bridges when batch completes
-        if (hasBridgeAuto) {
+        // #542: only fire on the transition (incomplete→complete), not every tick
+        if (hasBridgeAuto && (!prev || !prev.complete)) {
           await autoStopBridges(project.id, project, qwPort);
         }
       }
