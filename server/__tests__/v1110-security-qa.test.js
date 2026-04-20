@@ -114,17 +114,19 @@ test("server/index.js killProcessOnPort uses execFileSync", () => {
 
 console.log("\n--- PR #546: Next.js upgrade ---\n");
 
-test("package.json specifies Next.js >= 16.2.4", () => {
+test("package.json specifies Next.js >= 16.2.4 (not vulnerable 16.2.1-16.2.3)", () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf-8"));
   const nextVersion = pkg.dependencies?.next || "";
-  // Accept pinned "16.2.4" or caret "^16.2.4" or higher
+  // Strip leading ^ or ~ for comparison
+  const bare = nextVersion.replace(/^[~^]+/, "");
+  const [major, minor, patch] = bare.split(".").map(Number);
   assert(
-    nextVersion === "16.2.4" || nextVersion === "^16.2.4" || nextVersion.includes("16.2."),
+    major > 16 || (major === 16 && minor > 2) || (major === 16 && minor === 2 && patch >= 4),
     `Expected next >= 16.2.4, got ${nextVersion}`
   );
 });
 
-test("package-lock.json has Next.js 16.2.4+", () => {
+test("package-lock.json has Next.js 16.2.4+ (resolved version)", () => {
   const lock = JSON.parse(fs.readFileSync(path.join(ROOT, "package-lock.json"), "utf-8"));
   const nextPkg = lock.packages?.["node_modules/next"];
   assert(nextPkg, "next should be in package-lock.json");
@@ -136,10 +138,17 @@ test("package-lock.json has Next.js 16.2.4+", () => {
   );
 });
 
-test("static export builds successfully", () => {
-  // Verified by the build step; this test checks the output directory exists
-  const outDir = path.join(ROOT, "out");
-  assert(fs.existsSync(outDir), "out/ directory should exist after build");
+test("next build produces index.html (not stale)", () => {
+  // Check that the build output contains index.html and it was modified
+  // after the package.json (a stale out/ from an older build would have
+  // an older mtime than the current package.json).
+  const outIndex = path.join(ROOT, "out", "index.html");
+  const pkgJson = path.join(ROOT, "package.json");
+  assert(fs.existsSync(outIndex), "out/index.html should exist after build");
+  const outMtime = fs.statSync(outIndex).mtimeMs;
+  const pkgMtime = fs.statSync(pkgJson).mtimeMs;
+  // Build output should be newer than package.json (rebuilt after upgrade)
+  assert(outMtime >= pkgMtime, "out/index.html should be newer than package.json (not stale)");
 });
 
 // ============================================================================
