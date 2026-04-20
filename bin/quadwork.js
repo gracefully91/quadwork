@@ -1378,9 +1378,15 @@ async function cmdInit() {
     rl.close();
 
     // Schedule browser open after the server has had a moment to bind.
-    const openCmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
     setTimeout(() => {
-      try { execFileSync(openCmd, [`${dashboardUrl}/setup`], { stdio: "ignore" }); } catch {}
+      try {
+        const url = `${dashboardUrl}/setup`;
+        if (process.platform === "win32") {
+          execFileSync("cmd", ["/c", "start", url], { stdio: "ignore" });
+        } else {
+          execFileSync(process.platform === "darwin" ? "open" : "xdg-open", [url], { stdio: "ignore" });
+        }
+      } catch {}
     }, 1500);
 
     // Run the server in the foreground. require() starts the express
@@ -1686,9 +1692,14 @@ function cmdStart() {
 
   // Open dashboard in browser after a short delay
   const dashboardUrl = `http://127.0.0.1:${port}`;
-  const openCmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
   setTimeout(() => {
-    try { execFileSync(openCmd, [dashboardUrl], { stdio: "ignore" }); } catch {}
+    try {
+      if (process.platform === "win32") {
+        execFileSync("cmd", ["/c", "start", dashboardUrl], { stdio: "ignore" });
+      } else {
+        execFileSync(process.platform === "darwin" ? "open" : "xdg-open", [dashboardUrl], { stdio: "ignore" });
+      }
+    } catch {}
   }, 1500);
 
   // Run server in foreground. Capture exports so the SIGINT handler
