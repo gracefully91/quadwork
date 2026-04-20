@@ -555,6 +555,7 @@ async function spawnAgentPty(project, agent) {
       queueWatcherHandle: null,
       // #418: ring buffer of recent PTY output so reconnecting WS
       // clients see the terminal state instead of a blank panel.
+      // #538: scrollback is scrubbed of likely secrets before replay.
       scrollback: Buffer.alloc(0),
     };
     agentSessions.set(key, session);
@@ -1717,6 +1718,53 @@ app.use((req, res, next) => {
   }
 });
 
+// --- #538: Scrollback secret scrubbing ---
+// Redact likely secrets from the scrollback buffer before replaying to
+// reconnecting WebSocket clients. Live streaming is intentionally left
+// unsanitized — the operator is watching the terminal in real time on
+// localhost, so live output is equivalent to sitting at the console.
+//
+// Scrollback replay, however, persists secrets beyond the moment they
+// were echoed and sends them to any new tab/reconnect. The scrubber
+// masks common secret patterns so casual reconnect doesn't leak creds.
+//
+// Threat model: QuadWork binds to 127.0.0.1 only. The scrollback
+// scrub is defense-in-depth — it reduces exposure if a secret is
+// accidentally echoed, but cannot catch every possible format. Operators
+// who handle highly sensitive credentials should avoid echoing them in
+// agent terminals.
+
+// Patterns that indicate a line contains a secret value.
+const _SECRET_NAME_RE = /\b\w*(KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|PASSPHRASE|AUTH)\w*\s*[=:]/i;
+// Known API key prefixes (Anthropic, GitHub, OpenAI, etc.).
+const _API_KEY_PREFIX_RE = /\b(sk-ant-api\d{2}-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{36,}|ghu_[A-Za-z0-9]{36,}|ghs_[A-Za-z0-9]{36,}|sk-[A-Za-z0-9]{20,}|xoxb-[A-Za-z0-9-]{20,}|xoxp-[A-Za-z0-9-]{20,})\b/;
+// Bearer authorization headers.
+const _BEARER_RE = /\bBearer\s+[A-Za-z0-9_.+/=-]{20,}/i;
+const _REDACTED = "[REDACTED]";
+
+function scrubScrollback(buf) {
+  if (!buf || buf.length === 0) return buf;
+  const text = buf.toString("utf-8");
+  const scrubbed = text.split("\n").map((line) => {
+    // Strip ANSI escape codes for pattern matching, but redact the
+    // original line (preserves terminal formatting around non-secret
+    // lines while ensuring secrets inside styled output are caught).
+    const plain = line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
+    if (_SECRET_NAME_RE.test(plain)) {
+      // Redact the value portion after the = or : delimiter.
+      return line.replace(/([=:])\s*\S.*/, `$1 ${_REDACTED}`);
+    }
+    if (_API_KEY_PREFIX_RE.test(plain)) {
+      return line.replace(_API_KEY_PREFIX_RE, _REDACTED);
+    }
+    if (_BEARER_RE.test(plain)) {
+      return line.replace(/\bBearer\s+[A-Za-z0-9_.+/=-]{20,}/gi, `Bearer ${_REDACTED}`);
+    }
+    return line;
+  }).join("\n");
+  return Buffer.from(scrubbed, "utf-8");
+}
+
 // --- WebSocket + PTY ---
 // WS connects to an existing PTY session (started via lifecycle API)
 // or spawns a new one if none exists.
@@ -1782,7 +1830,8 @@ wss.on("connection", async (ws, req) => {
       // synthetic status line so the terminal isn't completely blank.
       if (parsed.type === "replay") {
         if (session.scrollback && session.scrollback.length > 0) {
-          ws.send(session.scrollback);
+          // #538: scrub likely secrets before replaying accumulated output.
+          ws.send(scrubScrollback(session.scrollback));
         } else {
           ws.send(`\x1b[2m[agent online — waiting for input]\x1b[0m\r\n`);
         }
