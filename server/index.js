@@ -43,11 +43,11 @@ app.get("/api/health", (_req, res) => {
 
 // --- CLI status detection ---
 
-const { execSync } = require("child_process");
+const { execFileSync } = require("child_process");
 
 function isCliInstalled(cmd) {
   try {
-    execSync(`which ${cmd}`, { encoding: "utf-8", stdio: "pipe" });
+    execFileSync("which", [cmd], { encoding: "utf-8", stdio: "pipe" });
     return true;
   } catch {
     return false;
@@ -866,7 +866,7 @@ async function handleAgentChattr(req, res) {
   // lose their tracked reference when the Node process recycles).
   function killProcessOnPort(port) {
     try {
-      const pids = execSync(`lsof -ti TCP:${port} -sTCP:LISTEN`, {
+      const pids = execFileSync("lsof", ["-ti", `TCP:${port}`, "-sTCP:LISTEN"], {
         encoding: "utf-8",
         timeout: 5000,
         stdio: ["pipe", "pipe", "pipe"],
@@ -889,7 +889,7 @@ async function handleAgentChattr(req, res) {
     return new Promise((resolve) => {
       function check() {
         try {
-          execSync(`lsof -ti TCP:${port} -sTCP:LISTEN`, {
+          execFileSync("lsof", ["-ti", `TCP:${port}`, "-sTCP:LISTEN"], {
             encoding: "utf-8",
             timeout: 2000,
             stdio: ["pipe", "pipe", "pipe"],
@@ -1045,8 +1045,6 @@ async function handleAgentChattr(req, res) {
       return res.status(400).json({ ok: false, error: "AgentChattr not installed at " + (acDir || "unknown") });
     }
     try {
-      const { execSync } = require("child_process");
-
       // Stop running process before pulling. Snapshot first so a
       // botched git pull can still be rolled back from disk.
       // #424 / quadwork#304: best-effort.
@@ -1070,14 +1068,14 @@ async function handleAgentChattr(req, res) {
         await waitForPortFree(chattrPort, 3000);
       }
 
-      const pullResult = execSync("git pull 2>&1", { cwd: acDir, encoding: "utf-8", timeout: 30000 }).trim();
+      const pullResult = execFileSync("git", ["pull"], { cwd: acDir, encoding: "utf-8", timeout: 30000, stdio: "pipe" }).trim();
       // #388: re-apply sender-overflow CSS patch after git pull
       patchAgentchattrCss(acDir);
       const venvPython = path.join(acDir, ".venv", "bin", "python");
       let pipResult = "";
       const reqFile = path.join(acDir, "requirements.txt");
       if (fs.existsSync(venvPython) && fs.existsSync(reqFile)) {
-        pipResult = execSync(`"${venvPython}" -m pip install -r requirements.txt 2>&1`, { cwd: acDir, encoding: "utf-8", timeout: 120000 }).trim();
+        pipResult = execFileSync(venvPython, ["-m", "pip", "install", "-r", "requirements.txt"], { cwd: acDir, encoding: "utf-8", timeout: 120000, stdio: "pipe" }).trim();
       }
 
       // Restart if it was running before the update

@@ -14,7 +14,7 @@
 // Self-contained — depends only on Node built-ins so it's safe to require
 // from anywhere in the project (CLI bin, server routes, future tests).
 
-const { execSync } = require("child_process");
+const { execFileSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
@@ -28,8 +28,8 @@ const INSTALL_LOCK_STALE_MS = 10 * 60 * 1000; // 10 min
 const INSTALL_LOCK_WAIT_TOTAL_MS = 30 * 1000;  // wait up to 30s for a peer
 const INSTALL_LOCK_POLL_MS = 500;
 
-function _run(cmd, opts = {}) {
-  try { return execSync(cmd, { encoding: "utf-8", stdio: "pipe", ...opts }).trim(); }
+function _run(cmd, args = [], opts = {}) {
+  try { return execFileSync(cmd, args, { encoding: "utf-8", stdio: "pipe", ...opts }).trim(); }
   catch { return null; }
 }
 
@@ -129,7 +129,7 @@ function installAgentChattr(dir) {
         const info = _readLock(lockFile) || { pid: "?", ts: 0 };
         return setError(`Another install is in progress at ${dir} (pid ${info.pid}); timed out after ${INSTALL_LOCK_WAIT_TOTAL_MS}ms. Re-run after it finishes, or remove ${lockFile} if stale.`);
       }
-      try { execSync(`sleep ${INSTALL_LOCK_POLL_MS / 1000}`); }
+      try { execFileSync("sleep", [String(INSTALL_LOCK_POLL_MS / 1000)], { stdio: "pipe" }); }
       catch { /* sleep interrupted; loop will recheck */ }
     }
   }
@@ -158,7 +158,7 @@ function _installAgentChattrLocked(dir, setError) {
         try { fs.rmSync(dir, { recursive: true, force: true }); }
         catch (e) { return setError(`Cannot remove empty dir ${dir}: ${e.message}`); }
       } else if (fs.existsSync(path.join(dir, ".git"))) {
-        const remote = _run(`git -C "${dir}" remote get-url origin 2>/dev/null`);
+        const remote = _run("git", ["-C", dir, "remote", "get-url", "origin"]);
         if (remote && remote.includes("agentchattr")) {
           try { fs.rmSync(dir, { recursive: true, force: true }); }
           catch (e) { return setError(`Cannot remove failed clone at ${dir}: ${e.message}`); }
@@ -171,14 +171,14 @@ function _installAgentChattrLocked(dir, setError) {
     }
     try { fs.mkdirSync(path.dirname(dir), { recursive: true }); }
     catch (e) { return setError(`Cannot create parent of ${dir}: ${e.message}`); }
-    const cloneResult = _run(`git clone "${AGENTCHATTR_REPO}" "${dir}" 2>&1`, { timeout: 60000 });
+    const cloneResult = _run("git", ["clone", AGENTCHATTR_REPO, dir], { timeout: 60000 });
     if (cloneResult === null) return setError(`git clone of ${AGENTCHATTR_REPO} into ${dir} failed`);
     if (!fs.existsSync(runPy)) return setError(`Clone completed but run.py missing at ${dir}`);
   }
 
   // 2. Create venv if missing.
   if (!fs.existsSync(venvPython)) {
-    const venvResult = _run(`python3 -m venv "${path.join(dir, ".venv")}" 2>&1`, { timeout: 60000 });
+    const venvResult = _run("python3", ["-m", "venv", path.join(dir, ".venv")], { timeout: 60000 });
     if (venvResult === null) return setError(`python3 -m venv failed at ${dir}/.venv (is python3 installed?)`);
     if (!fs.existsSync(venvPython)) return setError(`venv created but ${venvPython} missing`);
     venvJustCreated = true;
@@ -188,7 +188,7 @@ function _installAgentChattrLocked(dir, setError) {
   if (venvJustCreated) {
     const reqFile = path.join(dir, "requirements.txt");
     if (fs.existsSync(reqFile)) {
-      const pipResult = _run(`"${venvPython}" -m pip install -r "${reqFile}" 2>&1`, { timeout: 120000 });
+      const pipResult = _run(venvPython, ["-m", "pip", "install", "-r", reqFile], { timeout: 120000 });
       if (pipResult === null) return setError(`pip install -r ${reqFile} failed`);
     }
   }
