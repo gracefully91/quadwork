@@ -1718,21 +1718,21 @@ app.use((req, res, next) => {
   }
 });
 
-// --- #538: Scrollback secret scrubbing ---
-// Redact likely secrets from the scrollback buffer before replaying to
-// reconnecting WebSocket clients. Live streaming is intentionally left
-// unsanitized — the operator is watching the terminal in real time on
-// localhost, so live output is equivalent to sitting at the console.
+// --- #538: PTY output secret scrubbing ---
+// Redact likely secrets from both live PTY streaming and scrollback
+// replay so echoed credentials are not exposed to dashboard clients.
 //
-// Scrollback replay, however, persists secrets beyond the moment they
-// were echoed and sends them to any new tab/reconnect. The scrubber
-// masks common secret patterns so casual reconnect doesn't leak creds.
+// Threat model: QuadWork binds to 127.0.0.1 only. The scrub is
+// defense-in-depth — it reduces exposure if a secret is accidentally
+// echoed, but cannot catch every possible format. Operators who handle
+// highly sensitive credentials should avoid echoing them in agent
+// terminals.
 //
-// Threat model: QuadWork binds to 127.0.0.1 only. The scrollback
-// scrub is defense-in-depth — it reduces exposure if a secret is
-// accidentally echoed, but cannot catch every possible format. Operators
-// who handle highly sensitive credentials should avoid echoing them in
-// agent terminals.
+// Live chunks from term.onData() are typically line-aligned (shell
+// flushes on newline), so per-chunk scrubbing catches the vast majority
+// of secrets. A secret split across two chunks is a theoretical edge
+// case that the scrollback scrub (which sees the full buffer) covers
+// on reconnect.
 
 // Patterns that indicate a line contains a secret value.
 const _SECRET_NAME_RE = /\b\w*(KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|PASSPHRASE|AUTH)\w*\s*[=:]/i;
@@ -1742,10 +1742,9 @@ const _API_KEY_PREFIX_RE = /\b(sk-ant-api\d{2}-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9
 const _BEARER_RE = /\bBearer\s+[A-Za-z0-9_.+/=-]{20,}/i;
 const _REDACTED = "[REDACTED]";
 
-function scrubScrollback(buf) {
-  if (!buf || buf.length === 0) return buf;
-  const text = buf.toString("utf-8");
-  const scrubbed = text.split("\n").map((line) => {
+function scrubSecrets(text) {
+  if (!text) return text;
+  return text.split("\n").map((line) => {
     // Strip ANSI escape codes for pattern matching, but redact the
     // original line (preserves terminal formatting around non-secret
     // lines while ensuring secrets inside styled output are caught).
@@ -1762,7 +1761,11 @@ function scrubScrollback(buf) {
     }
     return line;
   }).join("\n");
-  return Buffer.from(scrubbed, "utf-8");
+}
+
+function scrubScrollback(buf) {
+  if (!buf || buf.length === 0) return buf;
+  return Buffer.from(scrubSecrets(buf.toString("utf-8")), "utf-8");
 }
 
 // --- WebSocket + PTY ---
@@ -1806,10 +1809,10 @@ wss.on("connection", async (ws, req) => {
   // {"type":"replay"} to avoid the timing race where eager replay
   // arrived before the client's onmessage handler was registered.
 
-  // PTY → client
+  // PTY → client (#538: scrub secrets from live output)
   const dataHandler = session.term.onData((data) => {
     if (ws.readyState === ws.OPEN) {
-      ws.send(data);
+      ws.send(scrubSecrets(data));
     }
   });
 
