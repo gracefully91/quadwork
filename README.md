@@ -7,6 +7,7 @@
 ### Your AI dev team while you sleep.
 
 <p>
+  <a href="https://quadwork.xyz"><strong>Website</strong></a> ·
   <a href="#-quick-start"><strong>Quick Start</strong></a> ·
   <a href="#-how-it-works"><strong>How it Works</strong></a> ·
   <a href="#-features"><strong>Features</strong></a> ·
@@ -41,6 +42,8 @@ maintaining high code quality without manual oversight.
 <video src="https://github.com/user-attachments/assets/d1f6f3d6-27de-4afb-9b58-9fe1f87cddb8" width="720" controls></video>
 
 [▶ View Live Demo on YouTube](https://www.youtube.com/watch?v=Q0814uXjYoQ)
+
+[🌐 Visit quadwork.xyz](https://quadwork.xyz)
 
 ### How QuadWork Orchestrates Your Workflow
 
@@ -272,6 +275,10 @@ to per-project clones on the next `npx quadwork start`; once every project
 has a working clone, the legacy shared install can be removed safely via
 `npx quadwork cleanup --legacy` (which refuses to run if any project is
 still on the legacy install).
+
+## ─ Website
+
+Visit [quadwork.xyz](https://quadwork.xyz) for an overview, demo, and getting started guide.
 
 ## ─ Community
 
