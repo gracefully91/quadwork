@@ -30,6 +30,21 @@ interface BatchProgressPanelProps {
 
 const BAR_SEGMENTS = 20;
 
+const COPY = {
+  en: {
+    loading: "Loading batch progress…",
+    noBatch: "Current Batch: (none)",
+    noActive: "No active batch. Ask Head to start one via the chat.",
+    complete: "✅ COMPLETE",
+  },
+  ko: {
+    loading: "배치 진행 상황 로딩 중...",
+    noBatch: "현재 배치: (없음)",
+    noActive: "활성 배치가 없습니다. 채팅에서 Head에게 시작을 요청하세요.",
+    complete: "✅ 완료",
+  },
+} as const;
+
 function ProgressBar({ percent }: { percent: number }) {
   const filled = Math.round((percent / 100) * BAR_SEGMENTS);
   const empty = BAR_SEGMENTS - filled;
@@ -52,6 +67,7 @@ function ProgressBar({ percent }: { percent: number }) {
  */
 export default function BatchProgressPanel({ projectId }: BatchProgressPanelProps) {
   const { locale } = useLocale();
+  const t = COPY[locale];
   const [data, setData] = useState<BatchProgressData | null>(null);
 
   const load = useCallback(() => {
@@ -70,7 +86,7 @@ export default function BatchProgressPanel({ projectId }: BatchProgressPanelProp
   if (!data) {
     return (
       <div className="px-3 py-1.5 text-[11px] text-text-muted border-t border-border">
-        {locale === "ko" ? "배치 진행 상황 로딩 중..." : "Loading batch progress…"}
+        {t.loading}
       </div>
     );
   }
@@ -81,11 +97,11 @@ export default function BatchProgressPanel({ projectId }: BatchProgressPanelProp
       <div className="border-t border-border">
         <div className="px-3 py-1.5 flex items-center gap-2">
           <span className="text-[10px] text-text-muted uppercase tracking-wider">
-            {locale === "ko" ? "현재 배치: (없음)" : "Current Batch: (none)"}
+            {t.noBatch}
           </span>
         </div>
         <div className="px-3 pb-2 text-[11px] text-text-muted">
-          {locale === "ko" ? "활성 배치가 없습니다. 채팅에서 Head에게 시작을 요청하세요." : "No active batch. Ask Head to start one via the chat."}
+          {t.noActive}
         </div>
       </div>
     );
@@ -99,7 +115,7 @@ export default function BatchProgressPanel({ projectId }: BatchProgressPanelProp
           <span className="text-[10px] text-text-muted uppercase tracking-wider">
             {locale === "ko" ? `현재 배치: ${data.batch_number ?? "—"}번` : `Current Batch: Batch ${data.batch_number ?? "—"}`}
           </span>
-          <span className="text-[10px] text-accent">{locale === "ko" ? "✅ 완료" : "✅ COMPLETE"}</span>
+          <span className="text-[10px] text-accent">{t.complete}</span>
         </div>
         <div className="px-3 pb-2 text-[11px] text-text-muted">
           {locale === "ko" ? `${data.items.length}개 항목 모두 병합됨. 다음 배치를 기다리는 중.` : `All ${data.items.length} items merged. Waiting for the next batch.`}

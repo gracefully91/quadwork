@@ -15,8 +15,34 @@ import { useLocale } from "@/components/LocaleProvider";
 
 // ─── Server Controls ─────────────────────────────────────────────────────────
 
+const COPY = {
+  en: {
+    server: "Server",
+    stop: "Stop",
+    confirmStop: "Confirm Stop?",
+    restart: "Restart",
+    resetAgents: "Reset Agents",
+    keepAwake: "Keep Mac Awake",
+    aboutKeepAwake: "About Keep Mac Awake",
+    sound: "Notification Sound",
+    aboutSound: "About Notification Sound",
+  },
+  ko: {
+    server: "서버",
+    stop: "중지",
+    confirmStop: "정말 중지?",
+    restart: "재시작",
+    resetAgents: "에이전트 초기화",
+    keepAwake: "Mac 절전 방지",
+    aboutKeepAwake: "Mac 절전 방지 정보",
+    sound: "알림음",
+    aboutSound: "알림음 정보",
+  },
+} as const;
+
 function ServerSection({ projectId }: { projectId: string }) {
   const { locale } = useLocale();
+  const t = COPY[locale];
   const [loading, setLoading] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [confirmStop, setConfirmStop] = useState(false);
@@ -141,7 +167,7 @@ function ServerSection({ projectId }: { projectId: string }) {
   return (
     <div className="flex flex-col gap-1">
       <div className="text-[10px] text-text-muted uppercase tracking-wider font-semibold">
-        {locale === "ko" ? "서버" : "Server"}
+        {t.server}
       </div>
       <div className="flex items-center gap-1.5 flex-wrap">
         <button
@@ -153,21 +179,21 @@ function ServerSection({ projectId }: { projectId: string }) {
               : "text-text-muted border-border hover:text-error hover:border-error/40"
           }`}
         >
-          {loading === "stop" ? "..." : confirmStop ? (locale === "ko" ? "정말 중지?" : "Confirm Stop?") : (locale === "ko" ? "중지" : "Stop")}
+          {loading === "stop" ? "..." : confirmStop ? t.confirmStop : t.stop}
         </button>
         <button
           onClick={handleRestart}
           disabled={!!loading}
           className="px-1.5 py-0.5 text-[10px] text-text-muted border border-border hover:text-accent hover:border-accent/40 transition-colors disabled:opacity-50"
         >
-          {loading === "restart" ? "..." : (locale === "ko" ? "재시작" : "Restart")}
+          {loading === "restart" ? "..." : t.restart}
         </button>
         <button
           onClick={handleReset}
           disabled={!!loading}
           className="px-1.5 py-0.5 text-[10px] text-text-muted border border-border hover:text-accent hover:border-accent/40 transition-colors disabled:opacity-50"
         >
-          {loading === "reset" ? "..." : (locale === "ko" ? "에이전트 초기화" : "Reset Agents")}
+          {loading === "reset" ? "..." : t.resetAgents}
         </button>
       </div>
       {feedback && (
@@ -208,6 +234,7 @@ const AWAKE_AUTO_DEFAULT_HOURS = 8;
 
 function SystemSection({ projectId }: { projectId: string }) {
   const { locale } = useLocale();
+  const t = COPY[locale];
   const [active, setActive] = useState(false);
   const [remaining, setRemaining] = useState<number | null>(null);
   const [platform, setPlatform] = useState<string>("");
@@ -455,10 +482,10 @@ function SystemSection({ projectId }: { projectId: string }) {
       {showKeepAwakeSubsection && (
         <div className="flex flex-col gap-0.5 relative">
           <div className="flex items-center gap-1 text-[10px] text-text-muted uppercase tracking-wider font-semibold">
-            <span>{locale === "ko" ? "Mac 절전 방지" : "Keep Mac Awake"}</span>
+            <span>{t.keepAwake}</span>
             <button
               type="button"
-              aria-label={locale === "ko" ? "Mac 절전 방지 정보" : "About Keep Mac Awake"}
+              aria-label={t.aboutKeepAwake}
               onClick={() => setShowKeepAwakeHelp((s) => !s)}
               className="w-3.5 h-3.5 rounded-full border border-border text-[9px] leading-none text-text-muted hover:text-accent hover:border-accent inline-flex items-center justify-center"
             >?</button>
@@ -528,10 +555,10 @@ function SystemSection({ projectId }: { projectId: string }) {
           is now its own subsection with an always-visible descriptor. */}
       <div className="flex flex-col gap-0.5 relative">
         <div className="flex items-center gap-1 text-[10px] text-text-muted uppercase tracking-wider font-semibold">
-          <span>{locale === "ko" ? "알림음" : "Notification Sound"}</span>
+          <span>{t.sound}</span>
           <button
             type="button"
-            aria-label={locale === "ko" ? "알림음 정보" : "About Notification Sound"}
+            aria-label={t.aboutSound}
             onClick={() => setShowSoundHelp((s) => !s)}
             className="w-3.5 h-3.5 rounded-full border border-border text-[9px] leading-none text-text-muted hover:text-accent hover:border-accent inline-flex items-center justify-center"
           >?</button>

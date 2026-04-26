@@ -8,6 +8,11 @@ interface LoopGuardWidgetProps {
   projectId: string;
 }
 
+const COPY = {
+  en: { title: "Loop Guard" },
+  ko: { title: "루프 가드" },
+} as const;
+
 /**
  * #403 / quadwork#274: operator widget for AgentChattr's loop guard
  * (max_agent_hops). AC's default is 4, which fires mid-cycle on a
@@ -20,6 +25,7 @@ interface LoopGuardWidgetProps {
  */
 export default function LoopGuardWidget({ projectId }: LoopGuardWidgetProps) {
   const { locale } = useLocale();
+  const t = COPY[locale];
   const [value, setValue] = useState<number>(30);
   const [draft, setDraft] = useState<string>("30");
   const [saving, setSaving] = useState(false);
@@ -124,7 +130,7 @@ export default function LoopGuardWidget({ projectId }: LoopGuardWidgetProps) {
   return (
     <div className="border border-border rounded p-2 text-[11px] font-mono">
       <div className="flex items-center gap-1.5 mb-1">
-        <span className="uppercase tracking-wider text-text-muted">{locale === "ko" ? "루프 가드" : "Loop Guard"}</span>
+        <span className="uppercase tracking-wider text-text-muted">{t.title}</span>
         <InfoTooltip>
           {locale === "ko"
             ? <><b>루프 가드</b> - 사람의 응답 없이 에이전트끼리 메시지를 주고받는 횟수가 이 값에 도달하면 체인을 멈춥니다. 값을 높이면 야간 작업을 더 길게 돌릴 수 있고, 낮추면 runaway loop에 대한 안전성이 높아집니다. AgentChattr 허용 범위는 <b>4-50</b>이며 QuadWork 기본값은 <b>30</b>입니다. 직접 채팅을 한 번 보내면 카운터는 즉시 초기화됩니다.</>

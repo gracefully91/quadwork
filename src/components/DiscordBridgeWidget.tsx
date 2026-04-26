@@ -34,6 +34,11 @@ async function callDiscord(action: string, body: Record<string, unknown>) {
   return data;
 }
 
+const COPY = {
+  en: { title: "Discord Bridge" },
+  ko: { title: "디스코드 브릿지" },
+} as const;
+
 /**
  * Per-project Discord Bridge widget.
  *
@@ -44,6 +49,7 @@ async function callDiscord(action: string, body: Record<string, unknown>) {
  */
 export default function DiscordBridgeWidget({ projectId }: DiscordBridgeWidgetProps) {
   const { locale } = useLocale();
+  const t = COPY[locale];
   const [status, setStatus] = useState<DiscordStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -238,7 +244,7 @@ export default function DiscordBridgeWidget({ projectId }: DiscordBridgeWidgetPr
       <div className="flex flex-col border border-border">
         <div className="flex items-center justify-between h-7 px-3 shrink-0 border-b border-border">
           <div className="flex items-center gap-1.5">
-            <span className="text-[11px] text-text-muted uppercase tracking-wider">{locale === "ko" ? "디스코드 브릿지" : "Discord Bridge"}</span>
+            <span className="text-[11px] text-text-muted uppercase tracking-wider">{t.title}</span>
             <InfoTooltip>
               {locale === "ko"
                 ? <><b>디스코드 브릿지</b> - AgentChattr 메시지를 디스코드 채널로 전달해서 디스코드에서 모니터링할 수 있게 합니다. 양방향이며 디스코드에서 보낸 답장도 채팅에 나타납니다.</>
