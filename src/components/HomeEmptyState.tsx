@@ -25,7 +25,7 @@ export default function HomeEmptyState({ hasProjects }: HomeEmptyStateProps) {
       ? "사이드바에서 프로젝트를 골라 작업을 시작하세요"
       : "Pick a project from the sidebar to start working")
     : (locale === "ko"
-      ? "QuadWork에 오신 걸 환영합니다\n- 첫 AI 개발 팀을 설정해볼까요"
+      ? "QuadWork에 오신 걸 환영합니다 — 첫 AI 개발 팀을 설정해볼까요"
       : "Welcome to QuadWork — let's set up your first AI dev team");
   const subtext = hasProjects
     ? (locale === "ko"

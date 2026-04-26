@@ -999,7 +999,6 @@ export default function SetupWizard() {
                       onChange={(e) => setShowAdvanced(e.target.checked)}
                       className="accent-accent"
                     />
-                    <span className="text-[11px] text-text-muted">Custom ports</span>
                     <span className="text-[11px] text-text-muted">{locale === "ko" ? "사용자 지정 포트" : "Custom ports"}</span>
                   </label>
                   {showAdvanced && (
