@@ -47,12 +47,154 @@ const AGENTS = [
   { key: "dev", label: "T3 — Developer", role: "Full-Stack Builder", desc: "Implements features & fixes" },
 ];
 
+const COPY = {
+  en: {
+    // Header
+    setupTitle: "Set Up Your AI Dev Team",
+    setupDesc: "Configure agents, connect your repo, and launch a multi-agent development workflow in minutes.",
+    // WorkdirStep
+    whereProject: "Where is your project?",
+    workdirDesc: "Your project's git repository on your local machine. QuadWork will create 4 agent workspaces next to this directory.",
+    scanning: "Scanning for existing clone...",
+    foundClone: "Found existing clone",
+    useThis: "Use this",
+    chooseDifferent: "Choose different path",
+    willCloneTo: "Setup will clone it to:",
+    cloneHere: "Clone here & continue",
+    workspaceLayout: "Workspace layout",
+    next: "Next",
+    // Step 1: Name
+    nameTitle: "Name your project",
+    nameDesc: "This name identifies your project in the dashboard and agent configs.",
+    namePlaceholder: "e.g. My DeFi App",
+    // Step 2: Repo
+    repoTitle: "Connect a GitHub repository",
+    repoDesc: "Select an existing repo or enter one manually. Agents will work within this repo.",
+    personal: "Personal",
+    organization: "Organization",
+    searchRepos: "Search repos...",
+    loading: "Loading...",
+    noRepos: "No repos found.",
+    enterManually: "Enter manually instead",
+    backToList: "Back to repo list",
+    privateLabel: "private",
+    copy: "copy",
+    verifying: "Verifying...",
+    verifyContinue: "Verify & Continue",
+    // Step 3: Models
+    modelsTitle: "Configure agent CLI backends",
+    modelsDesc: "Each agent runs its own CLI instance. Pick the backend for each role.",
+    autoApprove: "Auto-approve agent actions",
+    autoApproveNote: "(required for autonomous work)",
+    reviewerCreds: "Configure reviewer credentials (for GitHub PR reviews)",
+    reviewerUsername: "Reviewer GitHub username",
+    tokenSource: "Token source",
+    pasteToken: "Paste token",
+    useFile: "Use existing file",
+    // Step 5: Workspaces
+    createWorkspacesTitle: "Create workspaces",
+    createWorkspacesDesc: "This creates git worktrees for each agent and writes seed configuration files (AGENTS.md, CLAUDE.md) into each workspace.",
+    creating: "Creating...",
+    createWorktrees: "Create Worktrees & Seed Files",
+    // Step 6: Launch
+    readyTitle: "Ready to launch",
+    readyDesc: "Everything is configured. Review the summary and launch your AI dev team.",
+    teamRoster: "Team Roster",
+    customPorts: "Custom ports",
+    saved: "Project saved. Redirecting to dashboard...",
+    launching: "Launching...",
+    launched: "Launched!",
+    launchProject: "Launch Project",
+    // Preview panel
+    previewTitle: "Configuration Preview",
+    previewProject: "Project",
+    previewRepo: "Repository",
+    branchProtectionLabel: "+ branch protection",
+    previewBackends: "Backends",
+    previewReviewer: "Reviewer",
+    previewDirectory: "Directory",
+    previewStatus: "Status",
+    // Setup complete
+    setupComplete: "Setup complete!",
+    redirecting: "Redirecting to project dashboard...",
+    // Port labels
+    agentchattrPort: "AgentChattr port",
+    mcpHttpPort: "MCP HTTP port",
+    mcpSsePort: "MCP SSE port",
+  },
+  ko: {
+    setupTitle: "AI 개발 팀 설정하기",
+    setupDesc: "에이전트를 설정하고, 저장소를 연결하고, 몇 분 안에 멀티 에이전트 개발 워크플로우를 시작하세요.",
+    whereProject: "프로젝트 위치는 어디인가요?",
+    workdirDesc: "로컬 머신에 있는 프로젝트의 Git 저장소 경로입니다. QuadWork는 이 디렉터리 옆에 4개의 에이전트 워크스페이스를 생성합니다.",
+    scanning: "기존 클론을 찾는 중...",
+    foundClone: "기존 클론을 찾았습니다",
+    useThis: "이 경로 사용",
+    chooseDifferent: "다른 경로 선택",
+    willCloneTo: "설치 시 다음 경로로 클론합니다:",
+    cloneHere: "여기에 클론하고 계속",
+    workspaceLayout: "워크스페이스 구조",
+    next: "다음",
+    nameTitle: "프로젝트 이름 정하기",
+    nameDesc: "이 이름은 대시보드와 에이전트 설정에서 프로젝트를 식별하는 데 사용됩니다.",
+    namePlaceholder: "예: 내 DeFi 앱",
+    repoTitle: "GitHub 저장소 연결",
+    repoDesc: "기존 저장소를 선택하거나 직접 입력하세요. 에이전트는 이 저장소 안에서 작업합니다.",
+    personal: "Personal",
+    organization: "Organization",
+    searchRepos: "저장소 검색...",
+    loading: "로딩 중...",
+    noRepos: "저장소를 찾지 못했습니다.",
+    enterManually: "직접 입력하기",
+    backToList: "저장소 목록으로 돌아가기",
+    privateLabel: "비공개",
+    copy: "복사",
+    verifying: "확인 중...",
+    verifyContinue: "확인 후 계속",
+    modelsTitle: "에이전트 CLI 백엔드 구성",
+    modelsDesc: "각 에이전트는 자체 CLI 인스턴스를 사용합니다. 역할별로 백엔드를 선택하세요.",
+    autoApprove: "Auto-approve agent actions",
+    autoApproveNote: "(required for autonomous work)",
+    reviewerCreds: "Configure reviewer credentials (for GitHub PR reviews)",
+    reviewerUsername: "Reviewer GitHub username",
+    tokenSource: "Token source",
+    pasteToken: "Paste token",
+    useFile: "Use existing file",
+    createWorkspacesTitle: "워크스페이스 생성",
+    createWorkspacesDesc: "각 에이전트용 Git 워크트리를 만들고 각 워크스페이스에 초기 설정 파일(AGENTS.md, CLAUDE.md)을 작성합니다.",
+    creating: "생성 중...",
+    createWorktrees: "워크트리 및 초기 파일 생성",
+    readyTitle: "실행 준비 완료",
+    readyDesc: "모든 설정이 끝났습니다. 요약을 확인하고 AI 개발 팀을 시작하세요.",
+    teamRoster: "팀 구성",
+    customPorts: "사용자 지정 포트",
+    saved: "프로젝트를 저장했습니다. 대시보드로 이동 중...",
+    launching: "실행 중...",
+    launched: "실행됨!",
+    launchProject: "프로젝트 실행",
+    previewTitle: "설정 미리보기",
+    previewProject: "프로젝트",
+    previewRepo: "저장소",
+    branchProtectionLabel: "+ 브랜치 보호",
+    previewBackends: "백엔드",
+    previewReviewer: "리뷰어",
+    previewDirectory: "디렉터리",
+    previewStatus: "상태",
+    setupComplete: "설정 완료!",
+    redirecting: "프로젝트 대시보드로 이동 중...",
+    agentchattrPort: "AgentChattr 포트",
+    mcpHttpPort: "MCP HTTP 포트",
+    mcpSsePort: "MCP SSE 포트",
+  },
+} as const;
+
 /* ── Component ─────────────────────────────────────────────────────────── */
 
 function WorkdirStep({ repo, workingDir, setWorkingDir, error, onNext }: {
   repo: string; workingDir: string; setWorkingDir: (v: string) => void; error?: string; onNext: () => void;
 }) {
   const { locale } = useLocale();
+  const t = COPY[locale as "en" | "ko"];
   const [detecting, setDetecting] = useState(true);
   const [detected, setDetected] = useState<{ found: boolean; path: string | null; suggested: string } | null>(null);
   const [showManual, setShowManual] = useState(false);
@@ -73,25 +215,23 @@ function WorkdirStep({ repo, workingDir, setWorkingDir, error, onNext }: {
 
   return (
     <div>
-      <h2 className="text-sm font-semibold text-text mb-1">{locale === "ko" ? "프로젝트 위치는 어디인가요?" : "Where is your project?"}</h2>
+      <h2 className="text-sm font-semibold text-text mb-1">{t.whereProject}</h2>
       <p className="text-[11px] text-text-muted mb-3">
-        {locale === "ko"
-          ? "로컬 머신에 있는 프로젝트의 Git 저장소 경로입니다. QuadWork는 이 디렉터리 옆에 4개의 에이전트 워크스페이스를 생성합니다."
-          : "Your project's git repository on your local machine. QuadWork will create 4 agent workspaces next to this directory."}
+        {t.workdirDesc}
       </p>
 
-      {detecting && <p className="text-[11px] text-text-muted mb-3">{locale === "ko" ? "기존 클론을 찾는 중..." : "Scanning for existing clone..."}</p>}
+      {detecting && <p className="text-[11px] text-text-muted mb-3">{t.scanning}</p>}
 
       {!detecting && detected?.found && (
         <div className="border border-accent/30 bg-accent/5 p-3 mb-4 text-[11px]">
-          <p className="text-accent font-semibold mb-1">{locale === "ko" ? "기존 클론을 찾았습니다" : "Found existing clone"}</p>
+          <p className="text-accent font-semibold mb-1">{t.foundClone}</p>
           <p className="text-text font-mono">{detected.path}</p>
           <div className="flex gap-2 mt-2">
             <button onClick={onNext} className="px-3 py-1 bg-accent text-bg text-[11px] font-semibold hover:bg-accent-dim transition-colors">
-              {locale === "ko" ? "이 경로 사용" : "Use this"}
+              {t.useThis}
             </button>
             <button onClick={() => { setShowManual(true); setWorkingDir(""); }} className="px-3 py-1 text-[11px] text-text-muted border border-border hover:text-text transition-colors">
-              {locale === "ko" ? "다른 경로 선택" : "Choose different path"}
+              {t.chooseDifferent}
             </button>
           </div>
         </div>
@@ -100,14 +240,14 @@ function WorkdirStep({ repo, workingDir, setWorkingDir, error, onNext }: {
       {!detecting && !detected?.found && !showManual && (
         <div className="border border-border bg-bg-surface p-3 mb-4 text-[11px]">
           <p className="text-text-muted mb-1">{locale === "ko" ? <><span className="text-accent">{repo}</span> 의 로컬 클론을 찾지 못했습니다</> : <>No local clone found for <span className="text-accent">{repo}</span></>}</p>
-          <p className="text-text-muted mb-2">{locale === "ko" ? "설치 시 다음 경로로 클론합니다:" : "Setup will clone it to:"}</p>
+          <p className="text-text-muted mb-2">{t.willCloneTo}</p>
           <p className="text-text font-mono mb-2">{detected?.suggested || `~/Projects/${slug}`}</p>
           <div className="flex gap-2">
             <button onClick={onNext} disabled={!workingDir.trim()} className="px-3 py-1 bg-accent text-bg text-[11px] font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
-              {locale === "ko" ? "여기에 클론하고 계속" : "Clone here & continue"}
+              {t.cloneHere}
             </button>
             <button onClick={() => setShowManual(true)} className="px-3 py-1 text-[11px] text-text-muted border border-border hover:text-text transition-colors">
-              {locale === "ko" ? "다른 경로 선택" : "Choose different path"}
+              {t.chooseDifferent}
             </button>
           </div>
         </div>
@@ -122,7 +262,7 @@ function WorkdirStep({ repo, workingDir, setWorkingDir, error, onNext }: {
             className="w-full bg-transparent border border-border px-2 py-1.5 text-[12px] text-text outline-none focus:border-accent mb-2"
           />
           <button onClick={onNext} disabled={!workingDir.trim()} className="px-4 py-1.5 bg-accent text-bg text-[12px] font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
-            {locale === "ko" ? "다음" : "Next"}
+            {t.next}
           </button>
         </>
       )}
@@ -130,7 +270,7 @@ function WorkdirStep({ repo, workingDir, setWorkingDir, error, onNext }: {
       {error && <p className="text-[11px] text-error mt-2">{error}</p>}
 
       <div className="border border-border bg-bg-surface p-3 mt-4 text-[11px] text-text-muted font-mono space-y-0.5">
-        <p className="text-[10px] uppercase tracking-wider text-text-muted mb-1 font-sans">{locale === "ko" ? "워크스페이스 구조" : "Workspace layout"}</p>
+        <p className="text-[10px] uppercase tracking-wider text-text-muted mb-1 font-sans">{t.workspaceLayout}</p>
         <p className="text-accent">{slug}/              &larr; your repo</p>
         <p>{slug}-head/         &larr; Head agent</p>
         <p>{slug}-dev/          &larr; Dev agent</p>
@@ -144,6 +284,7 @@ function WorkdirStep({ repo, workingDir, setWorkingDir, error, onNext }: {
 export default function SetupWizard() {
   const router = useRouter();
   const { locale, hydrated } = useLocale();
+  const t = COPY[locale as "en" | "ko"];
   const [steps, setSteps] = useState<Step[]>(() => getInitialSteps(locale));
   const [currentStep, setCurrentStep] = useState(0);
 
@@ -519,12 +660,10 @@ export default function SetupWizard() {
       {/* Header */}
       <div className="px-6 pt-6 pb-4 border-b border-border">
         <h1 className="text-lg font-semibold text-text tracking-tight">
-          {locale === "ko" ? "AI 개발 팀 설정하기" : "Set Up Your AI Dev Team"}
+          {t.setupTitle}
         </h1>
         <p className="text-[11px] text-text-muted mt-1">
-          {locale === "ko"
-            ? "에이전트를 설정하고, 저장소를 연결하고, 몇 분 안에 멀티 에이전트 개발 워크플로우를 시작하세요."
-            : "Configure agents, connect your repo, and launch a multi-agent development workflow in minutes."}
+          {t.setupDesc}
         </p>
       </div>
 
@@ -573,16 +712,14 @@ export default function SetupWizard() {
             {/* Step 1: Project Name */}
             {step?.id === "name" && (
               <div>
-                <h2 className="text-sm font-semibold text-text mb-1">{locale === "ko" ? "프로젝트 이름 정하기" : "Name your project"}</h2>
+                <h2 className="text-sm font-semibold text-text mb-1">{t.nameTitle}</h2>
                 <p className="text-[11px] text-text-muted mb-4">
-                  {locale === "ko"
-                    ? "이 이름은 대시보드와 에이전트 설정에서 프로젝트를 식별하는 데 사용됩니다."
-                    : "This name identifies your project in the dashboard and agent configs."}
+                  {t.nameDesc}
                 </p>
                 <input
                   value={projectName}
                   onChange={(e) => setProjectName(e.target.value)}
-                  placeholder={locale === "ko" ? "예: 내 DeFi 앱" : "e.g. My DeFi App"}
+                  placeholder={t.namePlaceholder}
                   className="w-full bg-transparent border border-border px-2 py-1.5 text-[12px] text-text outline-none focus:border-accent mb-4"
                   autoFocus
                 />
@@ -591,7 +728,7 @@ export default function SetupWizard() {
                   disabled={!projectName.trim()}
                   className="px-4 py-1.5 bg-accent text-bg text-[12px] font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50"
                 >
-                  {locale === "ko" ? "다음" : "Next"}
+                  {t.next}
                 </button>
               </div>
             )}
@@ -599,11 +736,9 @@ export default function SetupWizard() {
             {/* Step 2: GitHub Repo */}
             {step?.id === "repo" && (
               <div>
-                <h2 className="text-sm font-semibold text-text mb-1">{locale === "ko" ? "GitHub 저장소 연결" : "Connect a GitHub repository"}</h2>
+                <h2 className="text-sm font-semibold text-text mb-1">{t.repoTitle}</h2>
                 <p className="text-[11px] text-text-muted mb-4">
-                  {locale === "ko"
-                    ? "기존 저장소를 선택하거나 직접 입력하세요. 에이전트는 이 저장소 안에서 작업합니다."
-                    : "Select an existing repo or enter one manually. Agents will work within this repo."}
+                  {t.repoDesc}
                 </p>
 
                 {!repoManual && (
@@ -618,7 +753,7 @@ export default function SetupWizard() {
                             onChange={() => setOwnerMode("personal")}
                             className="accent-accent"
                           />
-                          <span className="text-[11px] text-text">Personal</span>
+                          <span className="text-[11px] text-text">{t.personal}</span>
                         </label>
                         <label className="flex items-center gap-1.5 cursor-pointer">
                           <input
@@ -631,7 +766,7 @@ export default function SetupWizard() {
                             }}
                             className="accent-accent"
                           />
-                          <span className="text-[11px] text-text">Organization</span>
+                          <span className="text-[11px] text-text">{t.organization}</span>
                         </label>
                         {ownerMode === "organization" && (
                           <select
@@ -654,10 +789,10 @@ export default function SetupWizard() {
                     <input
                       value={repoSearch}
                       onChange={(e) => setRepoSearch(e.target.value)}
-                      placeholder={locale === "ko" ? "저장소 검색..." : "Search repos..."}
+                      placeholder={t.searchRepos}
                       className="w-full bg-transparent border border-border px-2 py-1.5 text-[12px] text-text outline-none focus:border-accent mb-2"
                     />
-                    {reposLoading && <p className="text-[11px] text-text-muted mb-2">{locale === "ko" ? "로딩 중..." : "Loading..."}</p>}
+                    {reposLoading && <p className="text-[11px] text-text-muted mb-2">{t.loading}</p>}
                     <div className="max-h-40 overflow-y-auto border border-border mb-3">
                       {filteredRepos.map((r) => (
                         <button
@@ -668,19 +803,19 @@ export default function SetupWizard() {
                           }`}
                         >
                           <span className="font-semibold">{r.name}</span>
-                          {r.isPrivate && <span className="text-[10px] text-text-muted ml-2">{locale === "ko" ? "비공개" : "private"}</span>}
+                          {r.isPrivate && <span className="text-[10px] text-text-muted ml-2">{t.privateLabel}</span>}
                           {r.description && <span className="text-[10px] text-text-muted ml-2">{r.description}</span>}
                         </button>
                       ))}
                       {!reposLoading && filteredRepos.length === 0 && (
-                        <p className="px-3 py-2 text-[11px] text-text-muted">{locale === "ko" ? "저장소를 찾지 못했습니다." : "No repos found."}</p>
+                        <p className="px-3 py-2 text-[11px] text-text-muted">{t.noRepos}</p>
                       )}
                     </div>
                     <button
                       onClick={() => setRepoManual(true)}
                       className="text-[11px] text-text-muted hover:text-accent transition-colors mb-3 block"
                     >
-                      {locale === "ko" ? "직접 입력하기" : "Enter manually instead"}
+                      {t.enterManually}
                     </button>
                   </>
                 )}
@@ -697,7 +832,7 @@ export default function SetupWizard() {
                       onClick={() => setRepoManual(false)}
                       className="text-[11px] text-text-muted hover:text-accent transition-colors mb-3 block"
                     >
-                      {locale === "ko" ? "저장소 목록으로 돌아가기" : "Back to repo list"}
+                      {t.backToList}
                     </button>
                   </>
                 )}
@@ -726,7 +861,7 @@ export default function SetupWizard() {
                         onClick={() => navigator.clipboard.writeText(`gh api repos/${repo}/branches/main/protection -X PUT -f "required_pull_request_reviews[required_approving_review_count]=1" -f "enforce_admins=false" -f "required_status_checks=null" -f "restrictions=null"`)}
                         className="text-[10px] text-text-muted hover:text-accent shrink-0"
                       >
-                        {locale === "ko" ? "복사" : "copy"}
+                        {t.copy}
                       </button>
                     </div>
                   </div>
@@ -738,7 +873,7 @@ export default function SetupWizard() {
                   disabled={!repo || loading}
                   className="px-4 py-1.5 bg-accent text-bg text-[12px] font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50"
                 >
-                  {loading ? (locale === "ko" ? "확인 중..." : "Verifying...") : (locale === "ko" ? "확인 후 계속" : "Verify & Continue")}
+                  {loading ? t.verifying : t.verifyContinue}
                 </button>
               </div>
             )}
@@ -747,12 +882,10 @@ export default function SetupWizard() {
             {step?.id === "models" && (
               <div>
                 <h2 className="text-sm font-semibold text-text mb-1">
-                  {locale === "ko" ? "에이전트 CLI 백엔드 구성" : "Configure agent CLI backends"}
+                  {t.modelsTitle}
                 </h2>
                 <p className="text-[11px] text-text-muted mb-4">
-                  {locale === "ko"
-                    ? "각 에이전트는 자체 CLI 인스턴스를 사용합니다. 역할별로 백엔드를 선택하세요."
-                    : "Each agent runs its own CLI instance. Pick the backend for each role."}
+                  {t.modelsDesc}
                 </p>
 
                 {/* Single-CLI friendly message */}
@@ -815,10 +948,10 @@ export default function SetupWizard() {
                     className="accent-accent"
                   />
                   <span className="text-[11px] text-text">
-                    Auto-approve agent actions
+                    {t.autoApprove}
                   </span>
                   <span className="text-[10px] text-text-muted">
-                    (required for autonomous work)
+                    {t.autoApproveNote}
                   </span>
                 </label>
 
@@ -831,14 +964,14 @@ export default function SetupWizard() {
                     className="accent-accent"
                   />
                   <span className="text-[11px] text-text-muted">
-                    Configure reviewer credentials (for GitHub PR reviews)
+                    {t.reviewerCreds}
                   </span>
                 </label>
 
                 {showReviewerCreds && (
                   <div className="border border-border p-3 mb-4 space-y-3">
                     <div>
-                      <label className="text-[11px] text-text-muted block mb-1">Reviewer GitHub username</label>
+                      <label className="text-[11px] text-text-muted block mb-1">{t.reviewerUsername}</label>
                       <input
                         value={reviewerUser}
                         onChange={(e) => setReviewerUser(e.target.value)}
@@ -847,7 +980,7 @@ export default function SetupWizard() {
                       />
                     </div>
                     <div>
-                      <label className="text-[11px] text-text-muted block mb-2">Token source</label>
+                      <label className="text-[11px] text-text-muted block mb-2">{t.tokenSource}</label>
                       <div className="flex gap-4 mb-2">
                         <label className="flex items-center gap-1.5 cursor-pointer">
                           <input
@@ -857,7 +990,7 @@ export default function SetupWizard() {
                             onChange={() => setReviewerTokenMode("paste")}
                             className="accent-accent"
                           />
-                          <span className="text-[11px] text-text">Paste token</span>
+                          <span className="text-[11px] text-text">{t.pasteToken}</span>
                         </label>
                         <label className="flex items-center gap-1.5 cursor-pointer">
                           <input
@@ -867,7 +1000,7 @@ export default function SetupWizard() {
                             onChange={() => setReviewerTokenMode("file")}
                             className="accent-accent"
                           />
-                          <span className="text-[11px] text-text">Use existing file</span>
+                          <span className="text-[11px] text-text">{t.useFile}</span>
                         </label>
                       </div>
                       {reviewerTokenMode === "paste" ? (
@@ -923,7 +1056,7 @@ export default function SetupWizard() {
                   onClick={goNext}
                   className="px-4 py-1.5 bg-accent text-bg text-[12px] font-semibold hover:bg-accent-dim transition-colors"
                 >
-                  {locale === "ko" ? "다음" : "Next"}
+                  {t.next}
                 </button>
               </div>
             )}
@@ -942,11 +1075,9 @@ export default function SetupWizard() {
             {/* Step 5: Create Workspaces */}
             {step?.id === "workspaces" && (
               <div>
-                <h2 className="text-sm font-semibold text-text mb-1">{locale === "ko" ? "워크스페이스 생성" : "Create workspaces"}</h2>
+                <h2 className="text-sm font-semibold text-text mb-1">{t.createWorkspacesTitle}</h2>
                 <p className="text-[11px] text-text-muted mb-4">
-                  {locale === "ko"
-                    ? "각 에이전트용 Git 워크트리를 만들고 각 워크스페이스에 초기 설정 파일(AGENTS.md, CLAUDE.md)을 작성합니다."
-                    : "This creates git worktrees for each agent and writes seed configuration files (AGENTS.md, CLAUDE.md) into each workspace."}
+                  {t.createWorkspacesDesc}
                 </p>
                 {step.error && <p className="text-[11px] text-error mb-2">{step.error}</p>}
                 {workspaceLog.length > 0 && (
@@ -961,7 +1092,7 @@ export default function SetupWizard() {
                   disabled={loading}
                   className="px-4 py-1.5 bg-accent text-bg text-[12px] font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50"
                 >
-                  {loading ? (locale === "ko" ? "생성 중..." : "Creating...") : (locale === "ko" ? "워크트리 및 초기 파일 생성" : "Create Worktrees & Seed Files")}
+                  {loading ? t.creating : t.createWorktrees}
                 </button>
               </div>
             )}
@@ -969,17 +1100,15 @@ export default function SetupWizard() {
             {/* Step 6: Ready to Launch */}
             {step?.id === "launch" && (
               <div>
-                <h2 className="text-sm font-semibold text-text mb-1">{locale === "ko" ? "실행 준비 완료" : "Ready to launch"}</h2>
+                <h2 className="text-sm font-semibold text-text mb-1">{t.readyTitle}</h2>
                 <p className="text-[11px] text-text-muted mb-4">
-                  {locale === "ko"
-                    ? "모든 설정이 끝났습니다. 요약을 확인하고 AI 개발 팀을 시작하세요."
-                    : "Everything is configured. Review the summary and launch your AI dev team."}
+                  {t.readyDesc}
                 </p>
 
                 {/* Team roster */}
                 <div className="border border-border mb-4">
                   <div className="px-3 py-1.5 border-b border-border bg-bg-surface">
-                    <span className="text-[11px] text-text font-semibold">{locale === "ko" ? "팀 구성" : "Team Roster"}</span>
+                    <span className="text-[11px] text-text font-semibold">{t.teamRoster}</span>
                   </div>
                   {AGENTS.map((agent) => (
                     <div key={agent.key} className="flex items-center justify-between px-3 py-1.5 border-b border-border/50 last:border-b-0">
@@ -999,13 +1128,13 @@ export default function SetupWizard() {
                       onChange={(e) => setShowAdvanced(e.target.checked)}
                       className="accent-accent"
                     />
-                    <span className="text-[11px] text-text-muted">{locale === "ko" ? "사용자 지정 포트" : "Custom ports"}</span>
+                    <span className="text-[11px] text-text-muted">{t.customPorts}</span>
                   </label>
                   {showAdvanced && (
                     <div className="border border-border p-3 space-y-2">
                       <div className="grid grid-cols-3 gap-3">
                         <div className="flex flex-col gap-1">
-                          <label className="text-[10px] text-text-muted uppercase tracking-wider">{locale === "ko" ? "AgentChattr 포트" : "AgentChattr port"}</label>
+                          <label className="text-[10px] text-text-muted uppercase tracking-wider">{t.agentchattrPort}</label>
                           <input
                             type="number"
                             value={customPortsDraft.chattr}
@@ -1019,7 +1148,7 @@ export default function SetupWizard() {
                           )}
                         </div>
                         <div className="flex flex-col gap-1">
-                          <label className="text-[10px] text-text-muted uppercase tracking-wider">{locale === "ko" ? "MCP HTTP 포트" : "MCP HTTP port"}</label>
+                          <label className="text-[10px] text-text-muted uppercase tracking-wider">{t.mcpHttpPort}</label>
                           <input
                             type="number"
                             value={customPortsDraft.mcpHttp}
@@ -1033,7 +1162,7 @@ export default function SetupWizard() {
                           )}
                         </div>
                         <div className="flex flex-col gap-1">
-                          <label className="text-[10px] text-text-muted uppercase tracking-wider">{locale === "ko" ? "MCP SSE 포트" : "MCP SSE port"}</label>
+                          <label className="text-[10px] text-text-muted uppercase tracking-wider">{t.mcpSsePort}</label>
                           <input
                             type="number"
                             value={customPortsDraft.mcpSse}
@@ -1053,26 +1182,22 @@ export default function SetupWizard() {
 
                 {step.error && <p className="text-[11px] text-error mb-2">{step.error}</p>}
                 {launchStatus === "done" && (
-                  <p className="text-[11px] text-accent mb-2">{locale === "ko" ? "프로젝트를 저장했습니다. 대시보드로 이동 중..." : "Project saved. Redirecting to dashboard..."}</p>
+                  <p className="text-[11px] text-accent mb-2">{t.saved}</p>
                 )}
                 <button
                   onClick={launchProject}
                   disabled={launchStatus === "running" || launchStatus === "done"}
                   className="px-5 py-2 bg-accent text-bg text-[12px] font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50"
                 >
-                  {launchStatus === "running"
-                    ? (locale === "ko" ? "실행 중..." : "Launching...")
-                    : launchStatus === "done"
-                      ? (locale === "ko" ? "실행됨!" : "Launched!")
-                      : (locale === "ko" ? "프로젝트 실행" : "Launch Project")}
+                  {launchStatus === "running" ? t.launching : launchStatus === "done" ? t.launched : t.launchProject}
                 </button>
               </div>
             )}
 
             {currentStep >= steps.length && (
               <div className="text-center py-8">
-                <p className="text-accent text-sm font-semibold">{locale === "ko" ? "설정 완료!" : "Setup complete!"}</p>
-                <p className="text-[11px] text-text-muted mt-2">{locale === "ko" ? "프로젝트 대시보드로 이동 중..." : "Redirecting to project dashboard..."}</p>
+                <p className="text-accent text-sm font-semibold">{t.setupComplete}</p>
+                <p className="text-[11px] text-text-muted mt-2">{t.redirecting}</p>
               </div>
             )}
           </div>
@@ -1081,20 +1206,20 @@ export default function SetupWizard() {
         {/* Right: Live Preview Panel */}
         <div className="w-64 shrink-0 border-l border-border p-4 overflow-y-auto bg-bg-surface/50">
           <h3 className="text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-3">
-            {locale === "ko" ? "설정 미리보기" : "Configuration Preview"}
+            {t.previewTitle}
           </h3>
           <div className="space-y-3 text-[11px]">
             <div>
-              <span className="text-text-muted block mb-0.5">{locale === "ko" ? "프로젝트" : "Project"}</span>
+              <span className="text-text-muted block mb-0.5">{t.previewProject}</span>
               <span className="text-text">{projectName || "\u2014"}</span>
             </div>
             <div>
-              <span className="text-text-muted block mb-0.5">{locale === "ko" ? "저장소" : "Repository"}</span>
+              <span className="text-text-muted block mb-0.5">{t.previewRepo}</span>
               <span className="text-text">{repo || "\u2014"}</span>
-              {enableProtection && <span className="text-[10px] text-accent block">{locale === "ko" ? "+ 브랜치 보호" : "+ branch protection"}</span>}
+              {enableProtection && <span className="text-[10px] text-accent block">{t.branchProtectionLabel}</span>}
             </div>
             <div>
-              <span className="text-text-muted block mb-0.5">{locale === "ko" ? "백엔드" : "Backends"}</span>
+              <span className="text-text-muted block mb-0.5">{t.previewBackends}</span>
               {Object.entries(backends).map(([agent, backend]) => (
                 <div key={agent} className="flex justify-between">
                   <span className="text-text capitalize">{agent}</span>
@@ -1104,16 +1229,16 @@ export default function SetupWizard() {
             </div>
             {showReviewerCreds && reviewerUser && (
               <div>
-                <span className="text-text-muted block mb-0.5">{locale === "ko" ? "리뷰어" : "Reviewer"}</span>
+                <span className="text-text-muted block mb-0.5">{t.previewReviewer}</span>
                 <span className="text-text">@{reviewerUser}</span>
               </div>
             )}
             <div>
-              <span className="text-text-muted block mb-0.5">{locale === "ko" ? "디렉터리" : "Directory"}</span>
+              <span className="text-text-muted block mb-0.5">{t.previewDirectory}</span>
               <span className="text-text font-mono text-[10px]">{workingDir || "\u2014"}</span>
             </div>
             <div>
-              <span className="text-text-muted block mb-0.5">{locale === "ko" ? "상태" : "Status"}</span>
+              <span className="text-text-muted block mb-0.5">{t.previewStatus}</span>
               <div className="space-y-0.5">
                 {steps.map((s) => (
                   <div key={s.id} className="flex items-center gap-1.5">
