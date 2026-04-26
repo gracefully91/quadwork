@@ -30,11 +30,17 @@ import { useLocale } from "@/components/LocaleProvider";
  * layout collapses back to the single-column stack so nothing
  * clips in cramped split-view / mobile.
  */
+const COPY = {
+  en: { title: "Operator Features" },
+  ko: { title: "운영자 기능" },
+} as const;
+
 export default function OperatorFeaturesPanel({ projectId }: { projectId: string }) {
   const { locale } = useLocale();
+  const t = COPY[locale];
   return (
     <div className="flex flex-col h-full min-h-0">
-      <PanelHeader label={locale === "ko" ? "운영자 기능" : "Operator Features"} tooltip={
+      <PanelHeader label={t.title} tooltip={
         <InfoTooltip>
           {locale === "ko"
             ? <><b>운영자 기능</b> - 야간 자율 배치를 운영할 때 쓰는 도구 모음입니다. Scheduled Trigger, Telegram Bridge, Discord Bridge, Loop Guard, Project History, Agent Models가 포함됩니다.</>

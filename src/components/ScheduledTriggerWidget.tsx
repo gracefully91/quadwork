@@ -86,8 +86,22 @@ function formatCountdown(ms: number): string {
  * State is sourced from GET /api/triggers every 5s so reopening the
  * project picks up the last-used message + running status.
  */
+const COPY = {
+  en: {
+    autoOnTitle: "Auto-trigger ON — trigger follows batch lifecycle",
+    autoOffTitle: "Auto-trigger OFF — manual start/stop only",
+    autoPrefix: "Auto ",
+  },
+  ko: {
+    autoOnTitle: "자동 트리거 ON - 배치 생명주기에 따라 트리거가 동작합니다",
+    autoOffTitle: "자동 트리거 OFF - 수동 시작/중지만 가능합니다",
+    autoPrefix: "자동 ",
+  },
+} as const;
+
 export default function ScheduledTriggerWidget({ projectId }: ScheduledTriggerWidgetProps) {
   const { locale } = useLocale();
+  const t = COPY[locale];
   const [trigger, setTrigger] = useState<TriggerInfo | null>(null);
   const [message, setMessage] = useState<string>("");
   const [intervalMin, setIntervalMin] = useState<number>(15);
@@ -416,16 +430,14 @@ export default function ScheduledTriggerWidget({ projectId }: ScheduledTriggerWi
           <button
             type="button"
             onClick={toggleAutoTrigger}
-            title={autoTrigger
-              ? (locale === "ko" ? "자동 트리거 ON - 배치 생명주기에 따라 트리거가 동작합니다" : "Auto-trigger ON — trigger follows batch lifecycle")
-              : (locale === "ko" ? "자동 트리거 OFF - 수동 시작/중지만 가능합니다" : "Auto-trigger OFF — manual start/stop only")}
+            title={autoTrigger ? t.autoOnTitle : t.autoOffTitle}
             className={`px-1.5 py-0.5 text-[10px] border transition-colors ${
               autoTrigger
                 ? "border-accent/50 text-accent bg-accent/10 hover:bg-accent/20"
                 : "border-border text-text-muted hover:text-text hover:border-accent"
             }`}
           >
-            {locale === "ko" ? "자동 " : "Auto "}{autoTrigger ? "●" : "○"}
+            {t.autoPrefix}{autoTrigger ? "●" : "○"}
           </button>
         </div>
       </div>

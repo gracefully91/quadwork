@@ -46,8 +46,14 @@ async function callTelegram(action: string, body: Record<string, unknown>) {
  * start/stop + a setup modal to configure bot_token + chat_id from
  * scratch.
  */
+const COPY = {
+  en: { title: "Telegram Bridge" },
+  ko: { title: "텔레그램 브릿지" },
+} as const;
+
 export default function TelegramBridgeWidget({ projectId }: TelegramBridgeWidgetProps) {
   const { locale } = useLocale();
+  const t = COPY[locale];
   const [status, setStatus] = useState<TelegramStatus | null>(null);
   const [busy, setBusy] = useState(false);
   // #372: split error state — actionError is set by the operator's
@@ -269,7 +275,7 @@ export default function TelegramBridgeWidget({ projectId }: TelegramBridgeWidget
       <div className="flex flex-col border border-border">
         <div className="flex items-center justify-between h-7 px-3 shrink-0 border-b border-border">
           <div className="flex items-center gap-1.5">
-            <span className="text-[11px] text-text-muted uppercase tracking-wider">{locale === "ko" ? "텔레그램 브릿지" : "Telegram Bridge"}</span>
+            <span className="text-[11px] text-text-muted uppercase tracking-wider">{t.title}</span>
             <InfoTooltip>
               {locale === "ko"
                 ? <><b>텔레그램 브릿지</b> - AgentChattr 메시지를 텔레그램 봇으로 전달해서 휴대폰에서 모니터링할 수 있게 합니다. 양방향이며 텔레그램에서 보낸 답장도 채팅에 나타납니다.</>

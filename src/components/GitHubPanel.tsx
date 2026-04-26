@@ -96,8 +96,28 @@ interface RateLimitInfo {
   critical: boolean;
 }
 
+const COPY = {
+  en: {
+    noIssues: "No issues",
+    noPRs: "No PRs",
+    recentlyClosed: "Recently closed",
+    recentlyMerged: "Recently merged",
+    noneYet: "None yet",
+    edit: "Edit",
+  },
+  ko: {
+    noIssues: "이슈 없음",
+    noPRs: "PR 없음",
+    recentlyClosed: "최근 종료됨",
+    recentlyMerged: "최근 병합됨",
+    noneYet: "아직 없음",
+    edit: "편집",
+  },
+} as const;
+
 export default function GitHubPanel({ projectId }: GitHubPanelProps) {
   const { locale } = useLocale();
+  const t = COPY[locale];
   const [issues, setIssues] = useState<Issue[]>([]);
   const [prs, setPrs] = useState<PR[]>([]);
   // #411 / quadwork#281: recently closed issues + merged PRs.
@@ -208,7 +228,7 @@ export default function GitHubPanel({ projectId }: GitHubPanelProps) {
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto">
             {issues.length === 0 && (
-              <div className="px-3 py-2 text-[11px] text-text-muted">{locale === "ko" ? "이슈 없음" : "No issues"}</div>
+              <div className="px-3 py-2 text-[11px] text-text-muted">{t.noIssues}</div>
             )}
             {issues.map((issue) => (
               <a
@@ -231,10 +251,10 @@ export default function GitHubPanel({ projectId }: GitHubPanelProps) {
             {/* #411 / quadwork#281: Recently closed issues — last 5,
                 muted style with a ✓ to distinguish from open. */}
             <div className="px-3 pt-2 pb-1 text-[9px] text-text-muted uppercase tracking-wider">
-              {locale === "ko" ? "최근 종료됨" : "Recently closed"}
+              {t.recentlyClosed}
             </div>
             {closedIssues.length === 0 && (
-              <div className="px-3 py-1 text-[11px] text-text-muted">{locale === "ko" ? "아직 없음" : "None yet"}</div>
+              <div className="px-3 py-1 text-[11px] text-text-muted">{t.noneYet}</div>
             )}
             {closedIssues.map((issue) => (
               <a
@@ -266,7 +286,7 @@ export default function GitHubPanel({ projectId }: GitHubPanelProps) {
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto">
             {prs.length === 0 && (
-              <div className="px-3 py-2 text-[11px] text-text-muted">{locale === "ko" ? "PR 없음" : "No PRs"}</div>
+              <div className="px-3 py-2 text-[11px] text-text-muted">{t.noPRs}</div>
             )}
             {prs.map((pr) => {
               const reviews = pr.reviews || [];
@@ -321,10 +341,10 @@ export default function GitHubPanel({ projectId }: GitHubPanelProps) {
             {/* #411 / quadwork#281: Recently merged PRs — last 5,
                 muted style with a ✓ to distinguish from open. */}
             <div className="px-3 pt-2 pb-1 text-[9px] text-text-muted uppercase tracking-wider">
-              {locale === "ko" ? "최근 병합됨" : "Recently merged"}
+              {t.recentlyMerged}
             </div>
             {mergedPrs.length === 0 && (
-              <div className="px-3 py-1 text-[11px] text-text-muted">{locale === "ko" ? "아직 없음" : "None yet"}</div>
+              <div className="px-3 py-1 text-[11px] text-text-muted">{t.noneYet}</div>
             )}
             {mergedPrs.map((pr) => (
               <a
@@ -364,7 +384,7 @@ export default function GitHubPanel({ projectId }: GitHubPanelProps) {
           onClick={() => setQueueModalOpen(true)}
           className="px-2 py-0.5 text-[10px] text-text-muted hover:text-accent border border-border hover:border-accent transition-colors uppercase tracking-wider"
         >
-          {locale === "ko" ? "편집" : "Edit"}
+          {t.edit}
         </button>
       </div>
 

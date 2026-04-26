@@ -19,8 +19,24 @@ interface ProjectDashboardProps {
   projectId: string;
 }
 
+const COPY = {
+  en: {
+    filterOnTitle: "Showing agent messages only — click to show all",
+    filterOffTitle: "Showing all messages — click to hide system/status noise",
+    filterOnLabel: "Filter system log: on",
+    filterOffLabel: "Filter system log: off",
+  },
+  ko: {
+    filterOnTitle: "에이전트 메시지만 표시 중 - 클릭하면 전체를 표시합니다",
+    filterOffTitle: "전체 메시지 표시 중 - 클릭하면 시스템/상태 로그를 숨깁니다",
+    filterOnLabel: "시스템 로그 필터: 켜짐",
+    filterOffLabel: "시스템 로그 필터: 꺼짐",
+  },
+} as const;
+
 export default function ProjectDashboard({ projectId }: ProjectDashboardProps) {
   const { locale } = useLocale();
+  const t = COPY[locale];
   const containerRef = useRef<HTMLDivElement>(null);
   const [colRatio, setColRatio] = useState(0.5);
   const [rowRatio, setRowRatio] = useState(0.5);
@@ -69,24 +85,23 @@ export default function ProjectDashboard({ projectId }: ProjectDashboardProps) {
       return next;
     });
   }, [projectId]);
-  const filterToggle = useMemo(() => (
-    <button
-      type="button"
-      onClick={toggleFilter}
-      title={filterSystem
-        ? (locale === "ko" ? "에이전트 메시지만 표시 중 - 클릭하면 전체를 표시합니다" : "Showing agent messages only — click to show all")
-        : (locale === "ko" ? "전체 메시지 표시 중 - 클릭하면 시스템/상태 로그를 숨깁니다" : "Showing all messages — click to hide system/status noise")}
-      className={`px-1.5 py-0.5 text-[10px] border transition-colors ${
-        filterSystem
-          ? "border-accent/50 text-accent bg-accent/10 hover:bg-accent/20"
-          : "border-border text-text-muted hover:text-text hover:border-accent"
-      }`}
-    >
-      {filterSystem
-        ? (locale === "ko" ? "시스템 로그 필터: 켜짐" : "Filter system log: on")
-        : (locale === "ko" ? "시스템 로그 필터: 꺼짐" : "Filter system log: off")}
-    </button>
-  ), [filterSystem, locale, toggleFilter]);
+  const filterToggle = useMemo(() => {
+    const t = COPY[locale];
+    return (
+      <button
+        type="button"
+        onClick={toggleFilter}
+        title={filterSystem ? t.filterOnTitle : t.filterOffTitle}
+        className={`px-1.5 py-0.5 text-[10px] border transition-colors ${
+          filterSystem
+            ? "border-accent/50 text-accent bg-accent/10 hover:bg-accent/20"
+            : "border-border text-text-muted hover:text-text hover:border-accent"
+        }`}
+      >
+        {filterSystem ? t.filterOnLabel : t.filterOffLabel}
+      </button>
+    );
+  }, [filterSystem, locale, toggleFilter]);
 
   // Poll agent states
   useEffect(() => {
