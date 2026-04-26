@@ -21,7 +21,7 @@ const COPY = {
   },
   ko: {
     headlineHasProjects: "사이드바에서 프로젝트를 골라 작업을 시작하세요",
-    headlineNoProjects: "QuadWork에 오신 걸 환영합니다 — 첫 AI 개발 팀을 설정해볼까요",
+    headlineNoProjects: "QuadWork에 오신 걸 환영합니다\n— 첫 AI 개발 팀을 설정해볼까요",
     subtextHasProjects: "각 프로젝트는 자체 4인 에이전트 팀과 채팅을 가집니다.\n왼쪽 사이드바에서 아무 프로젝트나 눌러 열 수 있습니다.",
     subtextNoProjects: "QuadWork는 Head, Dev, Reviewer 둘을 한 팀으로 운영합니다.\n이슈를 만들고, 코드를 작성하고, PR을 리뷰하고, 병합합니다.\n당신이 쉬는 동안에도요.",
     sidebar: "← 왼쪽 사이드바를 보세요",
