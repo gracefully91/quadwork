@@ -58,6 +58,11 @@ function getSteps(locale: "en" | "ko"): { title: string; body: string }[] {
   ];
 }
 
+const COPY = {
+  en: { title: "How QuadWork builds your code", subtitle: "Five steps from your one-line request to a merged pull request.", closeLabel: "Close" },
+  ko: { title: "QuadWork가 코드를 만드는 방식", subtitle: "한 줄 요청에서 병합된 풀 리퀘스트까지 가는 5단계입니다.", closeLabel: "닫기" },
+} as const;
+
 /**
  * "How to Work" modal (#229).
  *
@@ -67,6 +72,7 @@ function getSteps(locale: "en" | "ko"): { title: string; body: string }[] {
  */
 export default function HowToWorkModal({ open, onClose }: HowToWorkModalProps) {
   const { locale } = useLocale();
+  const t = COPY[locale];
   const steps = getSteps(locale);
 
   useEffect(() => {
@@ -93,7 +99,7 @@ export default function HowToWorkModal({ open, onClose }: HowToWorkModalProps) {
         <button
           type="button"
           onClick={onClose}
-          aria-label={locale === "ko" ? "닫기" : "Close"}
+          aria-label={t.closeLabel}
           className="absolute right-3 top-3 rounded p-1 text-neutral-400 hover:bg-white/5 hover:text-white"
         >
           <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -102,12 +108,10 @@ export default function HowToWorkModal({ open, onClose }: HowToWorkModalProps) {
         </button>
 
         <h2 id="how-to-work-title" className="text-base font-semibold text-white">
-          {locale === "ko" ? "QuadWork가 코드를 만드는 방식" : "How QuadWork builds your code"}
+          {t.title}
         </h2>
         <p className="mt-2 text-[12px] text-neutral-400">
-          {locale === "ko"
-            ? "한 줄 요청에서 병합된 풀 리퀘스트까지 가는 5단계입니다."
-            : "Five steps from your one-line request to a merged pull request."}
+          {t.subtitle}
         </p>
 
         <ol className="mt-5 relative">

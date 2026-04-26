@@ -24,6 +24,11 @@ const FOUR_AGENTS = [
   { id: "re2", label: "RE2" },
 ];
 
+const COPY = {
+  en: { title: "Agent Terminals", tooltipAriaLabel: "About agent terminals" },
+  ko: { title: "에이전트 터미널", tooltipAriaLabel: "에이전트 터미널 설명" },
+} as const;
+
 type AgentState = "running" | "stopped" | "error";
 
 interface AgentTerminalsGridProps {
@@ -43,13 +48,14 @@ interface AgentTerminalsGridProps {
  */
 export default function AgentTerminalsGrid({ projectId, agentStates, onStatusChange }: AgentTerminalsGridProps) {
   const { locale } = useLocale();
+  const t = COPY[locale];
   const [tipOpen, setTipOpen] = useState(false);
 
   return (
     <div className="flex flex-col h-full min-h-0">
       <div className="flex items-center justify-between h-7 px-3 shrink-0 border-b border-border">
         <div className="flex items-center gap-1.5">
-          <span className="text-[11px] text-text-muted uppercase tracking-wider">{locale === "ko" ? "에이전트 터미널" : "Agent Terminals"}</span>
+          <span className="text-[11px] text-text-muted uppercase tracking-wider">{t.title}</span>
           <div
             // #399 / quadwork#264: inline-flex+items-center so the
             // (?) button vertically centers with the title text. The
@@ -63,7 +69,7 @@ export default function AgentTerminalsGrid({ projectId, agentStates, onStatusCha
           >
             <button
               type="button"
-              aria-label={locale === "ko" ? "에이전트 터미널 설명" : "About agent terminals"}
+              aria-label={t.tooltipAriaLabel}
               className="w-3.5 h-3.5 rounded-full border border-border text-[9px] leading-none text-text-muted hover:text-accent hover:border-accent inline-flex items-center justify-center"
             >?</button>
             {tipOpen && (

@@ -63,6 +63,11 @@ function optionsForBackend(backend: string) {
   return MODEL_OPTIONS[backend] || [{ value: "", label: "(CLI default)" }];
 }
 
+const COPY = {
+  en: { title: "Agent Models", configure: "Configure →" },
+  ko: { title: "에이전트 모델", configure: "설정 →" },
+} as const;
+
 // #367: modal body — the full configuration UI from the original
 // AgentModelsWidget, unchanged except for being wrapped in a
 // modal shell. Owns its own data fetch + dirty tracking + restart
@@ -70,6 +75,7 @@ function optionsForBackend(backend: string) {
 // fetch until the operator actually wants to configure something.
 function AgentModelsModal({ projectId, onClose }: { projectId: string; onClose: () => void }) {
   const { locale } = useLocale();
+  const t = COPY[locale];
   const [rows, setRows] = useState<AgentRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -174,7 +180,7 @@ function AgentModelsModal({ projectId, onClose }: { projectId: string; onClose: 
         </button>
 
         <div className="flex items-center justify-between mb-3">
-          <h2 id="agent-models-title" className="text-base font-semibold text-white">{locale === "ko" ? "에이전트 모델" : "Agent Models"}</h2>
+          <h2 id="agent-models-title" className="text-base font-semibold text-white">{t.title}</h2>
           {error && <span className="text-[10px] text-error max-w-[60%] truncate ml-2" title={error}>err: {error}</span>}
         </div>
 
@@ -260,6 +266,7 @@ function AgentModelsModal({ projectId, onClose }: { projectId: string; onClose: 
 // outside the modal flow.
 export default function AgentModelsButton({ projectId }: AgentModelsWidgetProps) {
   const { locale } = useLocale();
+  const t = COPY[locale];
   const [open, setOpen] = useState(false);
   const [summary, setSummary] = useState<{ id: string; backend: string }[] | null>(null);
 
@@ -281,7 +288,7 @@ export default function AgentModelsButton({ projectId }: AgentModelsWidgetProps)
       <div className="flex flex-col border border-border">
         <div className="flex items-center justify-between h-7 px-3 shrink-0 border-b border-border">
           <div className="flex items-center gap-1.5">
-            <span className="text-[11px] text-text-muted uppercase tracking-wider">{locale === "ko" ? "에이전트 모델" : "Agent Models"}</span>
+            <span className="text-[11px] text-text-muted uppercase tracking-wider">{t.title}</span>
             <InfoTooltip>
               {locale === "ko"
                 ? <><b>에이전트 모델</b> - 각 에이전트가 어떤 LLM 모델과 추론 수준을 사용할지 설정합니다. 변경 사항은 에이전트를 재시작해야 적용됩니다.</>
@@ -293,7 +300,7 @@ export default function AgentModelsButton({ projectId }: AgentModelsWidgetProps)
             onClick={() => setOpen(true)}
             className="px-2 py-0.5 text-[10px] text-text-muted border border-border hover:text-accent hover:border-accent/40 transition-colors"
           >
-            {locale === "ko" ? "설정 →" : "Configure →"}
+            {t.configure}
           </button>
         </div>
         {summary && summary.length > 0 && (
