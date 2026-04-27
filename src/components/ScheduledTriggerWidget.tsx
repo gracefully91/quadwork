@@ -91,11 +91,21 @@ const COPY = {
     autoOnTitle: "Auto-trigger ON — trigger follows batch lifecycle",
     autoOffTitle: "Auto-trigger OFF — manual start/stop only",
     autoPrefix: "Auto ",
+    headerIdle: "Scheduled Trigger",
+    headerRunningAuto: "Scheduled Trigger (auto)",
+    headerRunning: "Scheduled Trigger (running)",
+    tooltipBold: "Scheduled Trigger",
+    tooltipAfter: " sends a periodic message to all agents on a timer. Use this to keep the autonomous workflow running overnight. First message fires after the configured interval, not immediately.",
   },
   ko: {
     autoOnTitle: "자동 트리거 ON - 배치 생명주기에 따라 트리거가 동작합니다",
     autoOffTitle: "자동 트리거 OFF - 수동 시작/중지만 가능합니다",
     autoPrefix: "자동 ",
+    headerIdle: "예약 트리거",
+    headerRunningAuto: "예약 트리거 (자동)",
+    headerRunning: "예약 트리거 (실행 중)",
+    tooltipBold: "예약 트리거",
+    tooltipAfter: " - 타이머에 따라 모든 에이전트에게 주기적으로 메시지를 보냅니다. 야간 자율 워크플로우를 계속 돌릴 때 사용하세요. 첫 메시지는 즉시가 아니라 설정한 간격 후에 전송됩니다.",
   },
 } as const;
 
@@ -414,14 +424,10 @@ export default function ScheduledTriggerWidget({ projectId }: ScheduledTriggerWi
       <div className="flex items-center justify-between h-7 px-3 shrink-0 border-b border-border">
         <div className="flex items-center gap-1.5">
           <span className="text-[11px] text-text-muted uppercase tracking-wider">
-            {locale === "ko"
-              ? `예약 트리거${running ? (autoTriggered ? " (자동)" : " (실행 중)") : ""}`
-              : `Scheduled Trigger${running ? (autoTriggered ? " (auto)" : " (running)") : ""}`}
+            {running ? (autoTriggered ? t.headerRunningAuto : t.headerRunning) : t.headerIdle}
           </span>
           <InfoTooltip>
-            {locale === "ko"
-              ? <><b>예약 트리거</b> - 타이머에 따라 모든 에이전트에게 주기적으로 메시지를 보냅니다. 야간 자율 워크플로우를 계속 돌릴 때 사용하세요. 첫 메시지는 즉시가 아니라 설정한 간격 후에 전송됩니다.</>
-              : <><b>Scheduled Trigger</b> sends a periodic message to all agents on a timer. Use this to keep the autonomous workflow running overnight. First message fires after the configured interval, not immediately.</>}
+            <><b>{t.tooltipBold}</b>{t.tooltipAfter}</>
           </InfoTooltip>
         </div>
         <div className="flex items-center gap-2">

@@ -26,6 +26,12 @@ const COPY = {
     aboutKeepAwake: "About Keep Mac Awake",
     sound: "Notification Sound",
     aboutSound: "About Notification Sound",
+    keepAwakeHelpBold: "Keep Mac Awake",
+    keepAwakeHelpCode: "caffeinate",
+    keepAwakeHelpAfter: " to stop the screen, disk, and system idle timers from sleeping your Mac during an overnight run. Make sure the laptop is plugged in — caffeinate blocks sleep but not battery drain.",
+    keepAwakeHelpBefore: " runs macOS ",
+    soundHelpBold: "Notification Sound",
+    soundHelpAfter: " plays a brief chime when an agent posts a new message (not your own sends, not system events). Sound choice picks one of the bundled chimes. Background-only mode suppresses the chime while the tab is focused — ding only when you’re looking elsewhere. All prefs persist in localStorage.",
   },
   ko: {
     server: "서버",
@@ -37,6 +43,12 @@ const COPY = {
     aboutKeepAwake: "Mac 절전 방지 정보",
     sound: "알림음",
     aboutSound: "알림음 정보",
+    keepAwakeHelpBold: "Mac 절전 방지",
+    keepAwakeHelpCode: "caffeinate",
+    keepAwakeHelpAfter: "를 실행해 야간 작업 중 Mac이 절전 상태로 들어가는 것을 막습니다. 충전기를 연결해 두세요. caffeinate는 절전은 막지만 배터리 소모를 막아주지는 않습니다.",
+    keepAwakeHelpBefore: "는 macOS의 ",
+    soundHelpBold: "알림음",
+    soundHelpAfter: "은 에이전트가 새 메시지를 보낼 때 짧은 알림음을 재생합니다. 내 메시지나 시스템 이벤트에는 울리지 않습니다. 사운드 선택으로 내장 알림음 중 하나를 고를 수 있고, 백그라운드 전용 모드는 탭이 포커스된 동안에는 알림음을 막습니다. 모든 설정은 localStorage에 저장됩니다.",
   },
 } as const;
 
@@ -505,9 +517,7 @@ function SystemSection({ projectId }: { projectId: string }) {
           </div>
           {showKeepAwakeHelp && (
             <div className="absolute left-0 top-4 z-30 w-64 p-2 text-[10px] leading-snug text-text bg-bg-surface border border-border rounded shadow-lg">
-              {locale === "ko"
-                ? <><b>Mac 절전 방지</b>는 macOS의 <code>caffeinate</code>를 실행해 야간 작업 중 Mac이 절전 상태로 들어가는 것을 막습니다. 충전기를 연결해 두세요. caffeinate는 절전은 막지만 배터리 소모를 막아주지는 않습니다.</>
-                : <><b>Keep Mac Awake</b> runs macOS <code>caffeinate</code> to stop the screen, disk, and system idle timers from sleeping your Mac during an overnight run. Make sure the laptop is plugged in — caffeinate blocks sleep but not battery drain.</>}
+              <b>{t.keepAwakeHelpBold}</b>{t.keepAwakeHelpBefore}<code>{t.keepAwakeHelpCode}</code>{t.keepAwakeHelpAfter}
             </div>
           )}
           {awakeAutoStatus && (
@@ -565,9 +575,7 @@ function SystemSection({ projectId }: { projectId: string }) {
         </div>
         {showSoundHelp && (
           <div className="absolute left-0 top-4 z-30 w-64 p-2 text-[10px] leading-snug text-text bg-bg-surface border border-border rounded shadow-lg">
-            {locale === "ko"
-              ? <><b>알림음</b>은 에이전트가 새 메시지를 보낼 때 짧은 알림음을 재생합니다. 내 메시지나 시스템 이벤트에는 울리지 않습니다. 사운드 선택으로 내장 알림음 중 하나를 고를 수 있고, 백그라운드 전용 모드는 탭이 포커스된 동안에는 알림음을 막습니다. 모든 설정은 localStorage에 저장됩니다.</>
-              : <><b>Notification Sound</b> plays a brief chime when an agent posts a new message (not your own sends, not system events). Sound choice picks one of the bundled chimes. Background-only mode suppresses the chime while the tab is focused — ding only when you&apos;re looking elsewhere. All prefs persist in localStorage.</>}
+            <b>{t.soundHelpBold}</b>{t.soundHelpAfter}
           </div>
         )}
         <div className="text-[10px] text-text-muted leading-tight">

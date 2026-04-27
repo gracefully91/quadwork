@@ -9,8 +9,24 @@ interface LoopGuardWidgetProps {
 }
 
 const COPY = {
-  en: { title: "Loop Guard" },
-  ko: { title: "루프 가드" },
+  en: {
+    title: "Loop Guard",
+    tooltipBold: "Loop Guard",
+    tooltipAfter: " pauses agent-to-agent message chains after this many hops with no human reply. Higher values let agents work longer overnight; lower values add safety against runaway loops. AgentChattr accepts ",
+    tooltipRange: "4–50",
+    tooltipMid: "; QuadWork defaults to ",
+    tooltipDefault: "30",
+    tooltipEnd: " (about 5–6 full PR cycles). Posting any chat message yourself resets the counter immediately.",
+  },
+  ko: {
+    title: "루프 가드",
+    tooltipBold: "루프 가드",
+    tooltipAfter: " - 사람의 응답 없이 에이전트끼리 메시지를 주고받는 횟수가 이 값에 도달하면 체인을 멈춥니다. 값을 높이면 야간 작업을 더 길게 돌릴 수 있고, 낮추면 runaway loop에 대한 안전성이 높아집니다. AgentChattr 허용 범위는 ",
+    tooltipRange: "4-50",
+    tooltipMid: "이며 QuadWork 기본값은 ",
+    tooltipDefault: "30",
+    tooltipEnd: "입니다. 직접 채팅을 한 번 보내면 카운터는 즉시 초기화됩니다.",
+  },
 } as const;
 
 /**
@@ -132,9 +148,7 @@ export default function LoopGuardWidget({ projectId }: LoopGuardWidgetProps) {
       <div className="flex items-center gap-1.5 mb-1">
         <span className="uppercase tracking-wider text-text-muted">{t.title}</span>
         <InfoTooltip>
-          {locale === "ko"
-            ? <><b>루프 가드</b> - 사람의 응답 없이 에이전트끼리 메시지를 주고받는 횟수가 이 값에 도달하면 체인을 멈춥니다. 값을 높이면 야간 작업을 더 길게 돌릴 수 있고, 낮추면 runaway loop에 대한 안전성이 높아집니다. AgentChattr 허용 범위는 <b>4-50</b>이며 QuadWork 기본값은 <b>30</b>입니다. 직접 채팅을 한 번 보내면 카운터는 즉시 초기화됩니다.</>
-            : <><b>Loop Guard</b> pauses agent-to-agent message chains after this many hops with no human reply. Higher values let agents work longer overnight; lower values add safety against runaway loops. AgentChattr accepts <b>4–50</b>; QuadWork defaults to <b>30</b> (about 5–6 full PR cycles). Posting any chat message yourself resets the counter immediately.</>}
+          <><b>{t.tooltipBold}</b>{t.tooltipAfter}<b>{t.tooltipRange}</b>{t.tooltipMid}<b>{t.tooltipDefault}</b>{t.tooltipEnd}</>
         </InfoTooltip>
       </div>
       <div className="flex items-center gap-1.5">

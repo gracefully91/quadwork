@@ -223,12 +223,8 @@ export default function GitHubPanel({ projectId }: GitHubPanelProps) {
             : "bg-[#ffcc00]/20 text-[#ffcc00]"
         }`}>
           {rateLimit.critical
-            ? (locale === "ko"
-              ? `GitHub API 제한에 걸렸습니다 - 캐시된 데이터를 표시합니다. ${rateLimit.resetInMinutes}분 후 초기화됩니다`
-              : `GitHub API rate limited — showing cached data. Resets in ${rateLimit.resetInMinutes}m`)
-            : (locale === "ko"
-              ? `GitHub API 남음: ${rateLimit.remaining}/${rateLimit.limit}. ${rateLimit.resetInMinutes}분 후 초기화`
-              : `GitHub API: ${rateLimit.remaining}/${rateLimit.limit} remaining. Resets in ${rateLimit.resetInMinutes}m`)
+            ? t.rateLimited(rateLimit.resetInMinutes)
+            : t.rateLow(rateLimit.remaining, rateLimit.limit, rateLimit.resetInMinutes)
           }
         </div>
       )}
@@ -238,12 +234,10 @@ export default function GitHubPanel({ projectId }: GitHubPanelProps) {
         <div className="flex-1 min-w-0 flex flex-col border-r border-border">
           <div className="px-3 py-1.5 border-b border-border shrink-0 flex items-center gap-1.5">
             <span className="text-[10px] text-text-muted uppercase tracking-wider">
-              {locale === "ko" ? `이슈 (${issues.length})` : `Issues (${issues.length})`}
+              {t.issuesHeader(issues.length)}
             </span>
             <InfoTooltip>
-              {locale === "ko"
-                ? <><b>이슈</b> - 이 프로젝트 GitHub 저장소의 열린 이슈입니다. 항목을 클릭하면 GitHub에서 열립니다.</>
-                : <><b>Issues</b> — open issues on the project&apos;s GitHub repo. Click any item to open it on GitHub.</>}
+              <><b>{t.issuesTooltipBefore}</b> {t.issuesTooltipAfter}</>
             </InfoTooltip>
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto">
@@ -296,12 +290,10 @@ export default function GitHubPanel({ projectId }: GitHubPanelProps) {
         <div className="flex-1 min-w-0 flex flex-col">
           <div className="px-3 py-1.5 border-b border-border shrink-0 flex items-center gap-1.5">
             <span className="text-[10px] text-text-muted uppercase tracking-wider">
-              {locale === "ko" ? `풀 리퀘스트 (${prs.length})` : `Pull Requests (${prs.length})`}
+              {t.prsHeader(prs.length)}
             </span>
             <InfoTooltip>
-              {locale === "ko"
-                ? <><b>풀 리퀘스트</b> - 검토 또는 병합을 기다리는 열린 PR입니다. 클릭하면 GitHub에서 열립니다.</>
-                : <><b>Pull Requests</b> — open PRs awaiting review or merge. Click to open on GitHub.</>}
+              <><b>{t.prsTooltipBefore}</b> {t.prsTooltipAfter}</>
             </InfoTooltip>
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto">
@@ -395,9 +387,7 @@ export default function GitHubPanel({ projectId }: GitHubPanelProps) {
         <div className="flex items-center gap-1.5">
           <span className="text-[11px] text-text-muted font-mono">OVERNIGHT-QUEUE.md</span>
           <InfoTooltip position="above">
-            {locale === "ko"
-              ? <><b>야간 큐</b> - Head가 다음 티켓을 고를 때 읽는 작업 큐 파일입니다. 편집을 눌러 배치 내용과 순서를 수정할 수 있습니다.</>
-              : <><b>Overnight Queue</b> — the task queue file Head reads to pick the next ticket. Click Edit to modify batch contents and ordering.</>}
+            <><b>{t.queueTooltipBefore}</b> {t.queueTooltipAfter}</>
           </InfoTooltip>
         </div>
         <button

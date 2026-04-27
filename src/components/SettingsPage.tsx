@@ -91,6 +91,8 @@ const COPY = {
     cleanup: "Cleanup",
     cleanupIntro:
       "Each project now has its own AgentChattr clone at ~/.quadwork/{id}/agentchattr (~77 MB). After all projects are migrated, the legacy global install can be removed:",
+    cleanupIntroBefore: "Each project now has its own AgentChattr clone at ",
+    cleanupIntroAfter: " (~77 MB). After all projects are migrated, the legacy global install can be removed:",
     cleanupSingle: "To remove a single project's clone and config entry:",
     cleanupHelp:
       "Both commands prompt for confirmation. Worktrees and source repos are never touched. See npx quadwork --help or the README's Disk Usage section for details.",
@@ -103,6 +105,8 @@ const COPY = {
     onlyInstalledSuffix: "is installed.",
     installOther: "Install",
     forMoreBackendOptions: "for more backend options:",
+    onlyInstalledMsg: (name: string) => `Only ${name} is installed.`,
+    installOtherMsg: (name: string) => `Install ${name} for more backend options:`,
     name: "Name",
     command: "Command",
     model: "Model",
@@ -180,6 +184,8 @@ const COPY = {
     onlyInstalledSuffix: "만 설치되어 있습니다.",
     installOther: "",
     forMoreBackendOptions: "다른 CLI를 설치하면 선택지가 늘어납니다:",
+    onlyInstalledMsg: (name: string) => `${name}만 설치되어 있습니다.`,
+    installOtherMsg: (name: string) => `${name} 다른 CLI를 설치하면 선택지가 늘어납니다:`,
     name: "이름",
     command: "명령어",
     model: "모델",
@@ -764,14 +770,10 @@ export default function SettingsPage() {
                     {cliStatus && (cliStatus.claude ? !cliStatus.codex : cliStatus.codex) && (
                       <div className="border border-accent/20 bg-accent/5 p-2 mb-2 text-[10px]">
                         <span className="text-text">
-                          {locale === "ko"
-                            ? `${cliStatus.claude ? "Claude Code" : "Codex CLI"}${t.onlyInstalledSuffix}`
-                            : `${t.onlyInstalledPrefix} ${cliStatus.claude ? "Claude Code" : "Codex CLI"} ${t.onlyInstalledSuffix}`}
+                          {t.onlyInstalledMsg(cliStatus.claude ? "Claude Code" : "Codex CLI")}
                         </span>
                         <span className="text-text-muted ml-1">
-                          {locale === "ko"
-                            ? `${cliStatus.claude ? "Codex" : "Claude Code"} ${t.forMoreBackendOptions}`
-                            : `${t.installOther} ${cliStatus.claude ? "Codex" : "Claude Code"} ${t.forMoreBackendOptions}`}
+                          {t.installOtherMsg(cliStatus.claude ? "Codex" : "Claude Code")}
                         </span>
                         <code className="text-accent ml-1">
                           {cliStatus.claude ? "npm install -g codex" : "npm install -g @anthropic-ai/claude-code"}

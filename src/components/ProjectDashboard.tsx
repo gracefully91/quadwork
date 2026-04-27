@@ -25,12 +25,20 @@ const COPY = {
     filterOffTitle: "Showing all messages — click to hide system/status noise",
     filterOnLabel: "Filter system log: on",
     filterOffLabel: "Filter system log: off",
+    chatTooltipBold: "Primary Chat",
+    chatTooltipAfter: " — live chat between you and the 4 AI agents. Messages you type here trigger agent actions. Use @mentions to address specific agents.",
+    githubTooltipBold: "GitHub",
+    githubTooltipAfter: " — open issues and pull requests on this project's repo. Click any item to open it on GitHub. The batch progress panel tracks the active batch's lifecycle from queued to merged.",
   },
   ko: {
     filterOnTitle: "에이전트 메시지만 표시 중 - 클릭하면 전체를 표시합니다",
     filterOffTitle: "전체 메시지 표시 중 - 클릭하면 시스템/상태 로그를 숨깁니다",
     filterOnLabel: "시스템 로그 필터: 켜짐",
     filterOffLabel: "시스템 로그 필터: 꺼짐",
+    chatTooltipBold: "메인 채팅",
+    chatTooltipAfter: " - 당신과 4개의 AI 에이전트가 실시간으로 대화하는 공간입니다. 여기 입력한 메시지가 에이전트 동작을 시작시킵니다. 특정 에이전트를 부를 때는 @멘션을 사용하세요.",
+    githubTooltipBold: "GitHub",
+    githubTooltipAfter: " - 이 프로젝트 저장소의 열린 이슈와 PR을 보여줍니다. 항목을 클릭하면 GitHub에서 바로 열립니다. 아래 배치 진행 패널은 현재 배치가 대기에서 병합까지 어떻게 진행되는지 추적합니다.",
   },
 } as const;
 
@@ -193,9 +201,7 @@ export default function ProjectDashboard({ projectId }: ProjectDashboardProps) {
       <div className="flex flex-col overflow-hidden border-2 border-accent">
         <PanelHeader label="AgentChattr — primary chat" tooltip={
           <InfoTooltip>
-            {locale === "ko"
-              ? <><b>메인 채팅</b> - 당신과 4개의 AI 에이전트가 실시간으로 대화하는 공간입니다. 여기 입력한 메시지가 에이전트 동작을 시작시킵니다. 특정 에이전트를 부를 때는 @멘션을 사용하세요.</>
-              : <><b>Primary Chat</b> — live chat between you and the 4 AI agents. Messages you type here trigger agent actions. Use @mentions to address specific agents.</>}
+            <><b>{t.chatTooltipBold}</b>{t.chatTooltipAfter}</>
           </InfoTooltip>
         }>
           {filterToggle}
@@ -244,9 +250,7 @@ export default function ProjectDashboard({ projectId }: ProjectDashboardProps) {
       <div className="flex flex-col overflow-hidden">
         <PanelHeader label="GitHub" tooltip={
           <InfoTooltip>
-            {locale === "ko"
-              ? <><b>GitHub</b> - 이 프로젝트 저장소의 열린 이슈와 PR을 보여줍니다. 항목을 클릭하면 GitHub에서 바로 열립니다. 아래 배치 진행 패널은 현재 배치가 대기에서 병합까지 어떻게 진행되는지 추적합니다.</>
-              : <><b>GitHub</b> — open issues and pull requests on this project&apos;s repo. Click any item to open it on GitHub. The batch progress panel tracks the active batch&apos;s lifecycle from queued to merged.</>}
+            <><b>{t.githubTooltipBold}</b>{t.githubTooltipAfter}</>
           </InfoTooltip>
         } />
         <div className="flex-1 min-h-0">

@@ -64,8 +64,18 @@ function optionsForBackend(backend: string) {
 }
 
 const COPY = {
-  en: { title: "Agent Models", configure: "Configure →" },
-  ko: { title: "에이전트 모델", configure: "설정 →" },
+  en: {
+    title: "Agent Models",
+    configure: "Configure →",
+    tooltipBold: "Agent Models",
+    tooltipAfter: " — configure which LLM model and reasoning effort each agent uses. Changes require an agent restart to take effect.",
+  },
+  ko: {
+    title: "에이전트 모델",
+    configure: "설정 →",
+    tooltipBold: "에이전트 모델",
+    tooltipAfter: " - 각 에이전트가 어떤 LLM 모델과 추론 수준을 사용할지 설정합니다. 변경 사항은 에이전트를 재시작해야 적용됩니다.",
+  },
 } as const;
 
 // #367: modal body — the full configuration UI from the original
@@ -290,9 +300,7 @@ export default function AgentModelsButton({ projectId }: AgentModelsWidgetProps)
           <div className="flex items-center gap-1.5">
             <span className="text-[11px] text-text-muted uppercase tracking-wider">{t.title}</span>
             <InfoTooltip>
-              {locale === "ko"
-                ? <><b>에이전트 모델</b> - 각 에이전트가 어떤 LLM 모델과 추론 수준을 사용할지 설정합니다. 변경 사항은 에이전트를 재시작해야 적용됩니다.</>
-                : <><b>Agent Models</b> — configure which LLM model and reasoning effort each agent uses. Changes require an agent restart to take effect.</>}
+              <><b>{t.tooltipBold}</b>{t.tooltipAfter}</>
             </InfoTooltip>
           </div>
           <button

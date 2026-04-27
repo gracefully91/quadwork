@@ -25,8 +25,20 @@ const FOUR_AGENTS = [
 ];
 
 const COPY = {
-  en: { title: "Agent Terminals", tooltipAriaLabel: "About agent terminals" },
-  ko: { title: "에이전트 터미널", tooltipAriaLabel: "에이전트 터미널 설명" },
+  en: {
+    title: "Agent Terminals",
+    tooltipAriaLabel: "About agent terminals",
+    tooltipBefore: "These show what each agent is doing in their CLI session. ",
+    tooltipBold: "Do not type here directly",
+    tooltipAfter: " — use the AgentChattr chat above instead. Agents won't see messages typed in their terminals.",
+  },
+  ko: {
+    title: "에이전트 터미널",
+    tooltipAriaLabel: "에이전트 터미널 설명",
+    tooltipBefore: "각 에이전트가 CLI 세션에서 무엇을 하고 있는지 보여주는 읽기 전용 터미널입니다. ",
+    tooltipBold: "여기에 직접 입력하지 마세요.",
+    tooltipAfter: " 위의 AgentChattr 채팅을 사용해야 에이전트가 메시지를 볼 수 있습니다.",
+  },
 } as const;
 
 type AgentState = "running" | "stopped" | "error";
@@ -77,9 +89,7 @@ export default function AgentTerminalsGrid({ projectId, agentStates, onStatusCha
                 role="tooltip"
                 className="ko-help absolute top-5 left-0 z-20 w-72 max-w-[min(18rem,calc(100vw-2rem))] p-2 text-[11px] leading-snug text-text bg-bg-surface border border-border shadow-lg"
               >
-                {locale === "ko"
-                  ? <>각 에이전트가 CLI 세션에서 무엇을 하고 있는지 보여주는 읽기 전용 터미널입니다. <b>여기에 직접 입력하지 마세요.</b> 위의 AgentChattr 채팅을 사용해야 에이전트가 메시지를 볼 수 있습니다.</>
-                  : <>These show what each agent is doing in their CLI session. <b>Do not type here directly</b> — use the AgentChattr chat above instead. Agents won&apos;t see messages typed in their terminals.</>}
+                {t.tooltipBefore}<b>{t.tooltipBold}</b>{t.tooltipAfter}
               </div>
             )}
           </div>

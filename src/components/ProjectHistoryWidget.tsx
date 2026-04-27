@@ -38,8 +38,16 @@ const MAX_BYTES = 10 * 1024 * 1024;
  * project, and renders a small progress / result block.
  */
 const COPY = {
-  en: { title: "Project History" },
-  ko: { title: "프로젝트 히스토리" },
+  en: {
+    title: "Project History",
+    tooltipBold: "Project History",
+    tooltipAfter: " — export or import the full AgentChattr chat history for this project. Useful for backup, migration, or resuming after a fresh install.",
+  },
+  ko: {
+    title: "프로젝트 히스토리",
+    tooltipBold: "프로젝트 히스토리",
+    tooltipAfter: " - 이 프로젝트의 전체 AgentChattr 채팅 기록을 내보내거나 가져옵니다. 백업, 마이그레이션, 재설치 후 복구에 유용합니다.",
+  },
 } as const;
 
 export default function ProjectHistoryWidget({ projectId }: ProjectHistoryWidgetProps) {
@@ -271,9 +279,7 @@ export default function ProjectHistoryWidget({ projectId }: ProjectHistoryWidget
       <div className="flex items-center gap-1.5 text-text-muted uppercase tracking-wider mb-1.5">
         {t.title}
         <InfoTooltip>
-          {locale === "ko"
-            ? <><b>프로젝트 히스토리</b> - 이 프로젝트의 전체 AgentChattr 채팅 기록을 내보내거나 가져옵니다. 백업, 마이그레이션, 재설치 후 복구에 유용합니다.</>
-            : <><b>Project History</b> — export or import the full AgentChattr chat history for this project. Useful for backup, migration, or resuming after a fresh install.</>}
+          <><b>{t.tooltipBold}</b>{t.tooltipAfter}</>
         </InfoTooltip>
       </div>
       <div className="flex items-center gap-1.5 flex-wrap">

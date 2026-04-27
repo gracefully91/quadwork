@@ -47,8 +47,16 @@ async function callTelegram(action: string, body: Record<string, unknown>) {
  * scratch.
  */
 const COPY = {
-  en: { title: "Telegram Bridge" },
-  ko: { title: "텔레그램 브릿지" },
+  en: {
+    title: "Telegram Bridge",
+    tooltipBold: "Telegram Bridge",
+    tooltipAfter: " forwards AgentChattr messages to a Telegram bot so you can monitor from your phone. Bidirectional — replies from Telegram appear in chat.",
+  },
+  ko: {
+    title: "텔레그램 브릿지",
+    tooltipBold: "텔레그램 브릿지",
+    tooltipAfter: " - AgentChattr 메시지를 텔레그램 봇으로 전달해서 휴대폰에서 모니터링할 수 있게 합니다. 양방향이며 텔레그램에서 보낸 답장도 채팅에 나타납니다.",
+  },
 } as const;
 
 export default function TelegramBridgeWidget({ projectId }: TelegramBridgeWidgetProps) {
@@ -277,9 +285,7 @@ export default function TelegramBridgeWidget({ projectId }: TelegramBridgeWidget
           <div className="flex items-center gap-1.5">
             <span className="text-[11px] text-text-muted uppercase tracking-wider">{t.title}</span>
             <InfoTooltip>
-              {locale === "ko"
-                ? <><b>텔레그램 브릿지</b> - AgentChattr 메시지를 텔레그램 봇으로 전달해서 휴대폰에서 모니터링할 수 있게 합니다. 양방향이며 텔레그램에서 보낸 답장도 채팅에 나타납니다.</>
-                : <><b>Telegram Bridge</b> forwards AgentChattr messages to a Telegram bot so you can monitor from your phone. Bidirectional — replies from Telegram appear in chat.</>}
+              <><b>{t.tooltipBold}</b>{t.tooltipAfter}</>
             </InfoTooltip>
           </div>
           <div className="flex items-center gap-1.5">

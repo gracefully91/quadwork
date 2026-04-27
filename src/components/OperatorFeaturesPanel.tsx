@@ -31,8 +31,16 @@ import { useLocale } from "@/components/LocaleProvider";
  * clips in cramped split-view / mobile.
  */
 const COPY = {
-  en: { title: "Operator Features" },
-  ko: { title: "운영자 기능" },
+  en: {
+    title: "Operator Features",
+    tooltipBold: "Operator Features",
+    tooltipAfter: " — tools for running autonomous overnight batches. Includes the Scheduled Trigger, Telegram Bridge, Loop Guard, Project History, and Agent Models.",
+  },
+  ko: {
+    title: "운영자 기능",
+    tooltipBold: "운영자 기능",
+    tooltipAfter: " - 야간 자율 배치를 운영할 때 쓰는 도구 모음입니다. Scheduled Trigger, Telegram Bridge, Discord Bridge, Loop Guard, Project History, Agent Models가 포함됩니다.",
+  },
 } as const;
 
 export default function OperatorFeaturesPanel({ projectId }: { projectId: string }) {
@@ -42,9 +50,7 @@ export default function OperatorFeaturesPanel({ projectId }: { projectId: string
     <div className="flex flex-col h-full min-h-0">
       <PanelHeader label={t.title} tooltip={
         <InfoTooltip>
-          {locale === "ko"
-            ? <><b>운영자 기능</b> - 야간 자율 배치를 운영할 때 쓰는 도구 모음입니다. Scheduled Trigger, Telegram Bridge, Discord Bridge, Loop Guard, Project History, Agent Models가 포함됩니다.</>
-            : <><b>Operator Features</b> — tools for running autonomous overnight batches. Includes the Scheduled Trigger, Telegram Bridge, Loop Guard, Project History, and Agent Models.</>}
+          <><b>{t.tooltipBold}</b>{t.tooltipAfter}</>
         </InfoTooltip>
       } />
       <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-2 p-2 overflow-auto lg:overflow-hidden">

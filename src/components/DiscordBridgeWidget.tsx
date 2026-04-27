@@ -35,8 +35,16 @@ async function callDiscord(action: string, body: Record<string, unknown>) {
 }
 
 const COPY = {
-  en: { title: "Discord Bridge" },
-  ko: { title: "디스코드 브릿지" },
+  en: {
+    title: "Discord Bridge",
+    tooltipBold: "Discord Bridge",
+    tooltipAfter: " forwards AgentChattr messages to a Discord channel so you can monitor from Discord. Bidirectional — replies from Discord appear in chat.",
+  },
+  ko: {
+    title: "디스코드 브릿지",
+    tooltipBold: "디스코드 브릿지",
+    tooltipAfter: " - AgentChattr 메시지를 디스코드 채널로 전달해서 디스코드에서 모니터링할 수 있게 합니다. 양방향이며 디스코드에서 보낸 답장도 채팅에 나타납니다.",
+  },
 } as const;
 
 /**
@@ -246,9 +254,7 @@ export default function DiscordBridgeWidget({ projectId }: DiscordBridgeWidgetPr
           <div className="flex items-center gap-1.5">
             <span className="text-[11px] text-text-muted uppercase tracking-wider">{t.title}</span>
             <InfoTooltip>
-              {locale === "ko"
-                ? <><b>디스코드 브릿지</b> - AgentChattr 메시지를 디스코드 채널로 전달해서 디스코드에서 모니터링할 수 있게 합니다. 양방향이며 디스코드에서 보낸 답장도 채팅에 나타납니다.</>
-                : <><b>Discord Bridge</b> forwards AgentChattr messages to a Discord channel so you can monitor from Discord. Bidirectional — replies from Discord appear in chat.</>}
+              <><b>{t.tooltipBold}</b>{t.tooltipAfter}</>
             </InfoTooltip>
           </div>
           <div className="flex items-center gap-1.5">

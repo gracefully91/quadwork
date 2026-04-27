@@ -22,15 +22,31 @@ interface ActivityEvent {
   projectName: string;
 }
 
+const TIME_AGO = {
+  en: {
+    justNow: "just now",
+    minsAgo: (n: number) => `${n}m ago`,
+    hoursAgo: (n: number) => `${n}h ago`,
+    daysAgo: (n: number) => `${n}d ago`,
+  },
+  ko: {
+    justNow: "방금 전",
+    minsAgo: (n: number) => `${n}분 전`,
+    hoursAgo: (n: number) => `${n}시간 전`,
+    daysAgo: (n: number) => `${n}일 전`,
+  },
+} as const;
+
 function timeAgo(iso: string, locale: "en" | "ko"): string {
+  const ta = TIME_AGO[locale];
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60000);
-  if (mins < 1) return locale === "ko" ? "방금 전" : "just now";
-  if (mins < 60) return locale === "ko" ? `${mins}분 전` : `${mins}m ago`;
+  if (mins < 1) return ta.justNow;
+  if (mins < 60) return ta.minsAgo(mins);
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return locale === "ko" ? `${hours}시간 전` : `${hours}h ago`;
+  if (hours < 24) return ta.hoursAgo(hours);
   const days = Math.floor(hours / 24);
-  return locale === "ko" ? `${days}일 전` : `${days}d ago`;
+  return ta.daysAgo(days);
 }
 
 const COPY = {
@@ -47,6 +63,7 @@ const COPY = {
     recentActivity: "Recent Activity",
     noActivity: "No recent activity",
     apiError: "Could not load projects from /api/projects. The dashboard may be out of date — check the server logs and reload.",
+    projectCount: (n: number) => `${n} configured project${n !== 1 ? "s" : ""}`,
   },
   ko: {
     projects: "프로젝트",
@@ -61,6 +78,7 @@ const COPY = {
     recentActivity: "최근 활동",
     noActivity: "최근 활동이 없습니다",
     apiError: "/api/projects 에서 프로젝트를 불러오지 못했습니다. 대시보드 상태가 오래되었을 수 있습니다. 서버 로그를 확인하고 새로고침해 주세요.",
+    projectCount: (n: number) => `${n}개 프로젝트 설정됨`,
   },
 } as const;
 
@@ -119,9 +137,7 @@ export default function HomeDashboard() {
           <div className="mb-6">
             <h1 className="text-lg font-semibold text-text tracking-tight">{t.projects}</h1>
             <p className="text-xs text-text-muted mt-1">
-              {locale === "ko"
-                ? `${projects.length}개 프로젝트 설정됨`
-                : `${projects.length} configured project${projects.length !== 1 ? "s" : ""}`}
+              {t.projectCount(projects.length)}
             </p>
           </div>
 
