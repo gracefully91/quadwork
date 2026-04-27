@@ -1328,98 +1328,28 @@ async function cmdInit() {
     writeConfig(config);
     ok(`Wrote ${CONFIG_PATH}`);
 
-    // Step 3: Start server in the foreground (Batch 25 / #203).
-    //
-    // Previously cmdInit spawned the server detached and exited, which
-    // left users without logs, without a clear stop story, and
-    // inconsistent with `npx quadwork start` (#169). Now we print the
-    // welcome banner first, schedule the browser open, close the
-    // wizard readline, and then require() the server so it runs in
-    // the user's terminal — Ctrl+C stops it cleanly via the SIGINT
-    // handler below (same pattern cmdStart uses).
-    header("Step 3: Starting Dashboard");
-    const quadworkDir = path.join(__dirname, "..");
-    const serverDir = path.join(quadworkDir, "server");
-    if (!fs.existsSync(path.join(serverDir, "index.js"))) {
-      fail("Server not found. Run from the quadwork directory.");
-      rl.close();
-      process.exit(1);
-    }
+    // #573: Install phase complete — do NOT start the server.
+    // The wizard ensures all prerequisites are installed (AC clone,
+    // venv, pip) so that `npx quadwork start` boots fast without
+    // the 25-50s AC install race.
+    rl.close();
 
-    const dashPort = parseInt(port, 10) || 8400;
-    const dashboardUrl = `http://127.0.0.1:${dashPort}`;
-
-    // Celebratory welcome (printed BEFORE the server takes over stdout
-    // so it stays visible at the top of the scrollback).
     console.log("");
     console.log(`  ${c.cyan}${c.bold}╔══════════════════════════════════════════════════════════╗${c.reset}`);
     console.log(`  ${c.cyan}${c.bold}║${c.reset}                                                          ${c.cyan}${c.bold}║${c.reset}`);
-    console.log(`  ${c.cyan}${c.bold}║${c.reset}   ${c.green}${c.bold}Welcome to QuadWork!${c.reset}                                ${c.cyan}${c.bold}║${c.reset}`);
+    console.log(`  ${c.cyan}${c.bold}║${c.reset}   ${c.green}${c.bold}Setup complete!${c.reset}                                     ${c.cyan}${c.bold}║${c.reset}`);
     console.log(`  ${c.cyan}${c.bold}║${c.reset}                                                          ${c.cyan}${c.bold}║${c.reset}`);
-    console.log(`  ${c.cyan}${c.bold}║${c.reset}   Your AI-powered dev team is ready to ship.             ${c.cyan}${c.bold}║${c.reset}`);
+    console.log(`  ${c.cyan}${c.bold}║${c.reset}   Prerequisites installed. Config written.                ${c.cyan}${c.bold}║${c.reset}`);
     console.log(`  ${c.cyan}${c.bold}║${c.reset}                                                          ${c.cyan}${c.bold}║${c.reset}`);
-    console.log(`  ${c.cyan}${c.bold}║${c.reset}   ${c.green}*${c.reset} ${c.bold}Head${c.reset}        ${c.dim}— coordinates & merges${c.reset}                  ${c.cyan}${c.bold}║${c.reset}`);
-    console.log(`  ${c.cyan}${c.bold}║${c.reset}   ${c.green}*${c.reset} ${c.bold}Dev${c.reset}         ${c.dim}— writes all the code${c.reset}                   ${c.cyan}${c.bold}║${c.reset}`);
-    console.log(`  ${c.cyan}${c.bold}║${c.reset}   ${c.green}*${c.reset} ${c.bold}Reviewer1${c.reset}   ${c.dim}— independent code review${c.reset}               ${c.cyan}${c.bold}║${c.reset}`);
-    console.log(`  ${c.cyan}${c.bold}║${c.reset}   ${c.green}*${c.reset} ${c.bold}Reviewer2${c.reset}   ${c.dim}— independent code review${c.reset}               ${c.cyan}${c.bold}║${c.reset}`);
+    console.log(`  ${c.cyan}${c.bold}║${c.reset}   ${c.green}Next step:${c.reset}                                             ${c.cyan}${c.bold}║${c.reset}`);
     console.log(`  ${c.cyan}${c.bold}║${c.reset}                                                          ${c.cyan}${c.bold}║${c.reset}`);
-    console.log(`  ${c.cyan}${c.bold}║${c.reset}   4 agents. Full GitHub workflow. Runs while you sleep.  ${c.cyan}${c.bold}║${c.reset}`);
+    console.log(`  ${c.cyan}${c.bold}║${c.reset}     ${c.cyan}${c.bold}npx quadwork start${c.reset}                                 ${c.cyan}${c.bold}║${c.reset}`);
+    console.log(`  ${c.cyan}${c.bold}║${c.reset}                                                          ${c.cyan}${c.bold}║${c.reset}`);
+    console.log(`  ${c.cyan}${c.bold}║${c.reset}   This launches the dashboard where you can create        ${c.cyan}${c.bold}║${c.reset}`);
+    console.log(`  ${c.cyan}${c.bold}║${c.reset}   projects and start your AI agent team.                  ${c.cyan}${c.bold}║${c.reset}`);
     console.log(`  ${c.cyan}${c.bold}║${c.reset}                                                          ${c.cyan}${c.bold}║${c.reset}`);
     console.log(`  ${c.cyan}${c.bold}╚══════════════════════════════════════════════════════════╝${c.reset}`);
     console.log("");
-    console.log(`  ${c.green}*${c.reset} Dashboard: ${c.cyan}${dashboardUrl}${c.reset}`);
-    console.log(`  ${c.green}*${c.reset} Config:    ${c.dim}${CONFIG_PATH}${c.reset}`);
-    console.log("");
-    console.log(`  ${c.cyan}${c.bold}--- Create Your First Project ---${c.reset}`);
-    console.log("");
-    console.log(`  Your browser is opening now. If not, visit:`);
-    console.log("");
-    console.log(`    ${c.cyan}${c.bold}${dashboardUrl}/setup${c.reset}`);
-    console.log("");
-    console.log(`    ${c.dim}1.${c.reset} Connect a GitHub repo`);
-    console.log(`    ${c.dim}2.${c.reset} Pick models for each agent`);
-    console.log(`    ${c.dim}3.${c.reset} Hit Start — your team takes it from there`);
-    console.log("");
-    console.log(`  ${c.green}${c.bold}Happy shipping!${c.reset}  ${c.dim}(Press Ctrl+C to stop.)${c.reset}`);
-    console.log("");
-
-    // Close the wizard readline before requiring the server, otherwise
-    // stdin stays in raw/line-buffered mode and swallows Ctrl+C.
-    rl.close();
-
-    // Schedule browser open after the server has had a moment to bind.
-    setTimeout(() => {
-      try {
-        const url = `${dashboardUrl}/setup`;
-        if (process.platform === "win32") {
-          execFileSync("cmd", ["/c", "start", url], { stdio: "ignore" });
-        } else {
-          execFileSync(process.platform === "darwin" ? "open" : "xdg-open", [url], { stdio: "ignore" });
-        }
-      } catch {}
-    }, 1500);
-
-    // Run the server in the foreground. require() starts the express
-    // listener in this process, so cmdInit stays alive until Ctrl+C.
-    // Capture the exports so the SIGINT handler can ask the server
-    // to SIGTERM any AgentChattr children it spawned after init (the
-    // user creates a project in /setup and clicks Start → the
-    // dashboard launches python run.py as a detached child and only
-    // the server knows its pid, via its in-memory `chattrProcesses`
-    // Map).
-    const serverExports = require(path.join(serverDir, "index.js"));
-
-    // Graceful shutdown on Ctrl+C. Kill any dashboard-spawned
-    // AgentChattr children first, then exit so the port is released
-    // and no python is orphaned.
-    process.on("SIGINT", () => {
-      console.log("");
-      log("Shutting down...");
-      try { serverExports && serverExports.shutdownChattrProcesses && serverExports.shutdownChattrProcesses(); }
-      catch (e) { warn(`shutdownChattrProcesses failed: ${e.message}`); }
-      ok("Stopped.");
-      process.exit(0);
-    });
   } catch (err) {
     fail(err.message);
     rl.close();
@@ -2225,13 +2155,25 @@ switch (command) {
   case "migrate-agent-slugs":
     cmdMigrateAgentSlugs();
     break;
+  case undefined: {
+    // #573: No subcommand — smart default based on config state.
+    // Config file exists (even with 0 projects) → start, so the user
+    // can reach /setup to create their first project after init.
+    // No config file at all → init wizard (true fresh install).
+    if (fs.existsSync(CONFIG_PATH)) {
+      cmdStart();
+    } else {
+      cmdInit();
+    }
+    break;
+  }
   default:
     console.log(`
   Usage: quadwork <command>
 
   Commands:
-    init          Global setup (prereqs, port, backend) — then open web UI
-    start         Start the QuadWork dashboard and backend
+    init          Run setup wizard (prereqs, port, AgentChattr install)
+    start         Start the QuadWork dashboard, AgentChattr, and agents
     stop          Stop all QuadWork processes
     add-project   Add a project via CLI (alternative to web UI /setup)
     cleanup       Reclaim disk space (--project <id> or --legacy)
@@ -2239,9 +2181,12 @@ switch (command) {
     migrate-agent-slugs  Rename reviewer1/reviewer2 → re1/re2 in existing projects
 
   Workflow:
-    1. npx quadwork init     — one-time global setup, opens dashboard
-    2. Open /setup in browser — create projects with guided web UI
+    1. npx quadwork init     — one-time setup (installs prerequisites)
+    2. npx quadwork start    — launch dashboard, create projects, run agents
     3. npx quadwork stop     — stop everything when done
+
+  Smart default:
+    npx quadwork             — runs 'init' on fresh install, 'start' if configured
 
   Examples:
     npx quadwork init
@@ -2250,5 +2195,5 @@ switch (command) {
     npx quadwork cleanup --project my-project
     npx quadwork cleanup --legacy
 `);
-    if (command) process.exit(1);
+    process.exit(1);
 }
