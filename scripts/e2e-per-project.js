@@ -346,9 +346,9 @@ function killPidsOnPorts(ports) {
   }
 
   // Re-spawn project-b from its own clone via the same code path
-  // cmdStart uses (chattrSpawnArgs with cwd=clone, --config <tomlAtRoot>).
+  // cmdStart uses (chattrSpawnArgs with cwd=clone, config.toml at ROOT).
   const bVenvPy = path.join(bDir, ".venv", "bin", "python");
-  const bRespawn = spawn(bVenvPy, ["run.py", "--config", bToml], {
+  const bRespawn = spawn(bVenvPy, ["run.py"], {
     cwd: bDir,
     stdio: "ignore",
     detached: true,

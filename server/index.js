@@ -866,7 +866,7 @@ async function handleAgentChattr(req, res) {
 
     // Use project config.toml if available (isolated data dir + ports), otherwise fall back to --port
     const extraArgs = (projectConfigToml && fs.existsSync(projectConfigToml))
-      ? ["--config", projectConfigToml]
+      ? []
       : ["--port", chattrPort];
 
     // Resolve AgentChattr from its cloned directory

@@ -270,7 +270,14 @@ function _installAgentChattrLocked(dir, setError) {
     // hard-failing the install.
     const pinResult = run("git", ["-C", dir, "checkout", "-B", "pinned", AGENTCHATTR_PIN], { timeout: 30000 });
     if (pinResult === null) {
-      try { console.warn(`[quadwork] WARNING: could not check out AgentChattr pin ${AGENTCHATTR_PIN} at ${dir}; falling back to default branch. The upstream commit may have been force-pushed away — update AGENTCHATTR_PIN in bin/quadwork.js for reproducible installs.`); } catch {}
+      const pinWarnMsg = `Could not check out AgentChattr pin ${AGENTCHATTR_PIN} at ${dir}; falling back to default branch. AC's argparse may reject unknown flags. Update AGENTCHATTR_PIN in bin/quadwork.js for reproducible installs.`;
+      warn(pinWarnMsg);
+      // Persist to install log so post-mortem diagnosis is possible
+      // without re-running the install.
+      try {
+        const logDir = path.join(path.dirname(dir));
+        fs.appendFileSync(path.join(logDir, "install.log"), `[${new Date().toISOString()}] PIN-CHECKOUT-FAIL: ${pinWarnMsg}\n`);
+      } catch {}
     }
   } else {
     // #366: existing clone from a pre-fix install. If the clone
@@ -1032,7 +1039,7 @@ function writeAgentChattrConfig(setup, configTomlPath, { skipInstall = false } =
   // Start AgentChattr server (only if installed)
   if (acAvailable) {
     log("Starting AgentChattr server...");
-    const acSpawn = chattrSpawnArgs(acDir, ["--config", configTomlPath]);
+    const acSpawn = chattrSpawnArgs(acDir, []);
     if (acSpawn) {
       const acProc = spawn(acSpawn.command, acSpawn.spawnArgs, {
         cwd: acSpawn.cwd,
@@ -1615,7 +1622,7 @@ function cmdStart() {
       ? perProjectToml
       : (fs.existsSync(legacyToml) ? legacyToml : null);
     if (!configToml) continue;
-    const acSpawn = chattrSpawnArgs(projectAcDir, ["--config", configToml]);
+    const acSpawn = chattrSpawnArgs(projectAcDir, []);
     if (!acSpawn) continue;
     // #569: redirect AC stdout/stderr to a log file for diagnostics.
     const acLogDir = path.join(CONFIG_DIR, project.id);
