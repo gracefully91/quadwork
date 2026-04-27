@@ -361,7 +361,9 @@ async function buildAgentArgs(projectId, agentId) {
       const acReady = await waitForAgentChattrReady(acServerPort, 30000);
       if (!acReady) {
         console.warn(`[#565] Agent ${agentId}: AC not reachable on port ${acServerPort} after 30s. Spawning without chat integration.`);
-        return { args, acRegistrationName: null, acServerPort: null, acRegistrationToken: null, acInjectMode: null, acMcpHttpPort: mcpHttpPort || null };
+        // #565: preserve acServerPort and acInjectMode so deferred
+        // recovery in spawnAgentPty can retry registration later.
+        return { args, acRegistrationName: null, acServerPort, acRegistrationToken: null, acInjectMode: injectMode, acMcpHttpPort: mcpHttpPort || null };
       }
       // #242: best-effort deregister any stale registration of the
       // canonical name (left over by a crashed previous QuadWork
@@ -399,7 +401,9 @@ async function buildAgentArgs(projectId, agentId) {
       const acReady = await waitForAgentChattrReady(acServerPort, 30000);
       if (!acReady) {
         console.warn(`[#565] Agent ${agentId}: AC not reachable on port ${acServerPort} after 30s. Spawning without chat integration.`);
-        return { args, acRegistrationName: null, acServerPort: null, acRegistrationToken: null, acInjectMode: null, acMcpHttpPort: mcpHttpPort || null };
+        // #565: preserve acServerPort and acInjectMode so deferred
+        // recovery in spawnAgentPty can retry registration later.
+        return { args, acRegistrationName: null, acServerPort, acRegistrationToken: null, acInjectMode: injectMode, acMcpHttpPort: mcpHttpPort || null };
       }
       // #242: best-effort deregister stale canonical name first using
       // the persisted bearer token from a previous session.
@@ -627,6 +631,53 @@ async function spawnAgentPty(project, agent) {
       } catch {
         // best-effort — failure here just means no chat injection
       }
+    }
+
+    // #565: deferred registration recovery — if the agent spawned
+    // without AC registration (AC wasn't ready or registration failed),
+    // schedule a background retry so the agent picks up chat once AC
+    // comes up instead of staying mute for its entire lifetime.
+    if (!session.acRegistrationName && session.acServerPort && session.acInjectMode) {
+      const deferredRecovery = async () => {
+        // Wait up to 60s for AC to become reachable.
+        const ready = await waitForAgentChattrReady(session.acServerPort, 60000);
+        if (!ready || !session.term) return;
+
+        // Reuse recoverFrom409 which already handles full registration +
+        // heartbeat + queue-watcher bootstrap. It checks acServerPort
+        // internally and is safe to call even on a fresh session.
+        try {
+          await recoverFrom409(project, agent, session);
+        } catch {
+          return; // best-effort — AC health monitor can still recover later
+        }
+
+        // recoverFrom409 updates session.acRegistrationName/Token.
+        // Start heartbeat and queue watcher if recovery succeeded.
+        if (session.acRegistrationName && session.acRegistrationToken) {
+          console.log(`[#565] Agent ${agent}: deferred AC registration succeeded as ${session.acRegistrationName}.`);
+          if (!session.acHeartbeatHandle) {
+            session.acHeartbeatHandle = startHeartbeat(
+              session.acServerPort,
+              () => session.acRegistrationName,
+              () => session.acRegistrationToken,
+              { onConflict: () => recoverFrom409(project, agent, session) },
+            );
+          }
+          if (!session.queueWatcherHandle && session.term) {
+            try {
+              const { dir: acDir } = resolveProjectChattr(project);
+              if (acDir) {
+                const dataDir = path.join(acDir, "data");
+                session.queueWatcherHandle = startQueueWatcher(dataDir, session.acRegistrationName, session.term);
+              }
+            } catch {}
+          }
+        }
+      };
+      // Fire-and-forget — the agent is already running; this just adds
+      // chat integration when AC becomes available.
+      deferredRecovery().catch(() => {});
     }
 
     term.onExit(({ exitCode }) => {
