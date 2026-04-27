@@ -36,12 +36,22 @@ const COPY = {
     noBatch: "Current Batch: (none)",
     noActive: "No active batch. Ask Head to start one via the chat.",
     complete: "✅ COMPLETE",
+    batchHeader: (batchNumber: number | null) => `Current Batch: Batch ${batchNumber ?? "—"}`,
+    allMerged: (count: number) => `All ${count} items merged. Waiting for the next batch.`,
+    itemCount: (count: number) => `(${count} items)`,
+    tooltipBefore: "Current Batch",
+    tooltipAfter: " — progress tracker for the active batch. Polls GitHub to resolve each issue’s status (queued → in review → approved → merged).",
   },
   ko: {
     loading: "배치 진행 상황 로딩 중...",
     noBatch: "현재 배치: (없음)",
     noActive: "활성 배치가 없습니다. 채팅에서 Head에게 시작을 요청하세요.",
     complete: "✅ 완료",
+    batchHeader: (batchNumber: number | null) => `현재 배치: ${batchNumber ?? "—"}번`,
+    allMerged: (count: number) => `${count}개 항목 모두 병합됨. 다음 배치를 기다리는 중.`,
+    itemCount: (count: number) => `(${count}개 항목)`,
+    tooltipBefore: "현재 배치",
+    tooltipAfter: " - 활성 배치 진행 상황 추적기입니다. GitHub를 조회해 각 이슈 상태를 대기 → 검토 중 → 승인 → 병합 순으로 추적합니다.",
   },
 } as const;
 
@@ -113,12 +123,12 @@ export default function BatchProgressPanel({ projectId }: BatchProgressPanelProp
       <div className="border-t border-border">
         <div className="px-3 py-1.5 flex items-center gap-2">
           <span className="text-[10px] text-text-muted uppercase tracking-wider">
-            {locale === "ko" ? `현재 배치: ${data.batch_number ?? "—"}번` : `Current Batch: Batch ${data.batch_number ?? "—"}`}
+            {t.batchHeader(data.batch_number)}
           </span>
           <span className="text-[10px] text-accent">{t.complete}</span>
         </div>
         <div className="px-3 pb-2 text-[11px] text-text-muted">
-          {locale === "ko" ? `${data.items.length}개 항목 모두 병합됨. 다음 배치를 기다리는 중.` : `All ${data.items.length} items merged. Waiting for the next batch.`}
+          {t.allMerged(data.items.length)}
         </div>
       </div>
     );
@@ -128,13 +138,11 @@ export default function BatchProgressPanel({ projectId }: BatchProgressPanelProp
     <div className="border-t border-border">
       <div className="px-3 py-1.5 flex items-center gap-2 border-b border-border/40">
         <span className="text-[10px] text-text-muted uppercase tracking-wider">
-          {locale === "ko" ? `현재 배치: ${data.batch_number ?? "—"}번` : `Current Batch: Batch ${data.batch_number ?? "—"}`}
+          {t.batchHeader(data.batch_number)}
         </span>
-        <span className="text-[10px] text-text-muted">{locale === "ko" ? `(${data.items.length}개 항목)` : `(${data.items.length} items)`}</span>
+        <span className="text-[10px] text-text-muted">{t.itemCount(data.items.length)}</span>
         <InfoTooltip>
-          {locale === "ko"
-            ? <><b>현재 배치</b> - 활성 배치 진행 상황 추적기입니다. GitHub를 조회해 각 이슈 상태를 대기 → 검토 중 → 승인 → 병합 순으로 추적합니다.</>
-            : <><b>Current Batch</b> — progress tracker for the active batch. Polls GitHub to resolve each issue&apos;s status (queued &rarr; in review &rarr; approved &rarr; merged).</>}
+          <><b>{t.tooltipBefore}</b>{t.tooltipAfter}</>
         </InfoTooltip>
       </div>
       <div className="max-h-40 overflow-y-auto">
