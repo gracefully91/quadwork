@@ -121,6 +121,15 @@ const COPY = {
     agentchattrPort: "AgentChattr port",
     mcpHttpPort: "MCP HTTP port",
     mcpSsePort: "MCP SSE port",
+    // WorkdirStep + repo step
+    noCloneBefore: "No local clone found for",
+    noCloneAfter: "",
+    showingReposBefore: "Showing repos for",
+    showingReposAfter: "",
+    branchProtectionBefore: "Enable branch protection on",
+    branchProtectionAfter: "",
+    runAfterSetup: "Run this after setup, or configure in GitHub UI:",
+    autoDetected: (n: number) => `auto-detected: ${n}`,
   },
   ko: {
     setupTitle: "AI 개발 팀 설정하기",
@@ -185,6 +194,15 @@ const COPY = {
     agentchattrPort: "AgentChattr 포트",
     mcpHttpPort: "MCP HTTP 포트",
     mcpSsePort: "MCP SSE 포트",
+    // WorkdirStep + repo step
+    noCloneBefore: "",
+    noCloneAfter: " 의 로컬 클론을 찾지 못했습니다",
+    showingReposBefore: "",
+    showingReposAfter: " 의 저장소를 표시하는 중",
+    branchProtectionBefore: "",
+    branchProtectionAfter: " 브랜치 보호 사용",
+    runAfterSetup: "설치 후 이 명령을 실행하거나 GitHub UI에서 직접 설정하세요:",
+    autoDetected: (n: number) => `자동 감지: ${n}`,
   },
 } as const;
 
@@ -194,7 +212,7 @@ function WorkdirStep({ repo, workingDir, setWorkingDir, error, onNext }: {
   repo: string; workingDir: string; setWorkingDir: (v: string) => void; error?: string; onNext: () => void;
 }) {
   const { locale } = useLocale();
-  const t = COPY[locale as "en" | "ko"];
+  const t = COPY[locale];
   const [detecting, setDetecting] = useState(true);
   const [detected, setDetected] = useState<{ found: boolean; path: string | null; suggested: string } | null>(null);
   const [showManual, setShowManual] = useState(false);
@@ -239,7 +257,7 @@ function WorkdirStep({ repo, workingDir, setWorkingDir, error, onNext }: {
 
       {!detecting && !detected?.found && !showManual && (
         <div className="border border-border bg-bg-surface p-3 mb-4 text-[11px]">
-          <p className="text-text-muted mb-1">{locale === "ko" ? <><span className="text-accent">{repo}</span> 의 로컬 클론을 찾지 못했습니다</> : <>No local clone found for <span className="text-accent">{repo}</span></>}</p>
+          <p className="text-text-muted mb-1">{t.noCloneBefore && <>{t.noCloneBefore} </>}<span className="text-accent">{repo}</span>{t.noCloneAfter}</p>
           <p className="text-text-muted mb-2">{t.willCloneTo}</p>
           <p className="text-text font-mono mb-2">{detected?.suggested || `~/Projects/${slug}`}</p>
           <div className="flex gap-2">
@@ -284,7 +302,7 @@ function WorkdirStep({ repo, workingDir, setWorkingDir, error, onNext }: {
 export default function SetupWizard() {
   const router = useRouter();
   const { locale, hydrated } = useLocale();
-  const t = COPY[locale as "en" | "ko"];
+  const t = COPY[locale];
   const [steps, setSteps] = useState<Step[]>(() => getInitialSteps(locale));
   const [currentStep, setCurrentStep] = useState(0);
 
@@ -783,7 +801,7 @@ export default function SetupWizard() {
                     )}
                     {activeOwner && (
                       <p className="text-[11px] text-text-muted mb-2">
-                        {locale === "ko" ? <><span className="text-accent">{activeOwner}</span> 의 저장소를 표시하는 중</> : <>Showing repos for <span className="text-accent">{activeOwner}</span></>}
+                        {t.showingReposBefore && <>{t.showingReposBefore} </>}<span className="text-accent">{activeOwner}</span>{t.showingReposAfter}
                       </p>
                     )}
                     <input
@@ -846,13 +864,13 @@ export default function SetupWizard() {
                     className="accent-accent"
                   />
                   <span className="text-[11px] text-text-muted">
-                    {locale === "ko" ? <> <code className="text-accent">main</code> 브랜치 보호 사용</> : <>Enable branch protection on <code className="text-accent">main</code></>}
+                    {t.branchProtectionBefore && <>{t.branchProtectionBefore} </>}<code className="text-accent">main</code>{t.branchProtectionAfter}
                   </span>
                 </label>
 
                 {enableProtection && (
                   <div className="border border-border bg-bg-surface p-3 mb-4 text-[11px] space-y-2">
-                    <p className="text-text-muted">{locale === "ko" ? "설치 후 이 명령을 실행하거나 GitHub UI에서 직접 설정하세요:" : "Run this after setup, or configure in GitHub UI:"}</p>
+                    <p className="text-text-muted">{t.runAfterSetup}</p>
                     <div className="flex items-center gap-2">
                       <code className="text-accent flex-1 select-all text-[10px] break-all">
                         {`gh api repos/${repo || "owner/repo"}/branches/main/protection -X PUT -f "required_pull_request_reviews[required_approving_review_count]=1" -f "enforce_admins=false" -f "required_status_checks=null" -f "restrictions=null"`}
@@ -1144,7 +1162,7 @@ export default function SetupWizard() {
                             className="bg-transparent border border-border px-2 py-1 text-[11px] text-text outline-none focus:border-accent"
                           />
                           {autoDetectedPorts.chattr > 0 && (
-                            <span className="text-[10px] text-text-muted">{locale === "ko" ? `자동 감지: ${autoDetectedPorts.chattr}` : `auto-detected: ${autoDetectedPorts.chattr}`}</span>
+                            <span className="text-[10px] text-text-muted">{t.autoDetected(autoDetectedPorts.chattr)}</span>
                           )}
                         </div>
                         <div className="flex flex-col gap-1">
@@ -1158,7 +1176,7 @@ export default function SetupWizard() {
                             className="bg-transparent border border-border px-2 py-1 text-[11px] text-text outline-none focus:border-accent"
                           />
                           {autoDetectedPorts.mcpHttp > 0 && (
-                            <span className="text-[10px] text-text-muted">{locale === "ko" ? `자동 감지: ${autoDetectedPorts.mcpHttp}` : `auto-detected: ${autoDetectedPorts.mcpHttp}`}</span>
+                            <span className="text-[10px] text-text-muted">{t.autoDetected(autoDetectedPorts.mcpHttp)}</span>
                           )}
                         </div>
                         <div className="flex flex-col gap-1">
@@ -1172,7 +1190,7 @@ export default function SetupWizard() {
                             className="bg-transparent border border-border px-2 py-1 text-[11px] text-text outline-none focus:border-accent"
                           />
                           {autoDetectedPorts.mcpSse > 0 && (
-                            <span className="text-[10px] text-text-muted">{locale === "ko" ? `자동 감지: ${autoDetectedPorts.mcpSse}` : `auto-detected: ${autoDetectedPorts.mcpSse}`}</span>
+                            <span className="text-[10px] text-text-muted">{t.autoDetected(autoDetectedPorts.mcpSse)}</span>
                           )}
                         </div>
                       </div>
