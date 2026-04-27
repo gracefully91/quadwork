@@ -2098,10 +2098,6 @@ setInterval(runLoopGuardPollingTick, LOOP_GUARD_POLL_INTERVAL_MS);
 // finds agents missing acRegistrationName, and stop+respawns them so
 // they get MCP CLI flags at launch time.
 async function restartUnregisteredAgents(projectId) {
-  const cfg = readConfig();
-  const project = (cfg.projects || []).find((p) => p.id === projectId);
-  if (!project) return;
-
   const toRestart = [];
   for (const [key, session] of agentSessions) {
     if (session.projectId !== projectId) continue;
@@ -2112,14 +2108,14 @@ async function restartUnregisteredAgents(projectId) {
   }
 
   if (toRestart.length === 0) return;
-  const samplePort = toRestart.length > 0 ? agentSessions.get(toRestart[0].key)?.acServerPort : "?";
+  const samplePort = agentSessions.get(toRestart[0].key)?.acServerPort || "?";
   console.log(`[health] AC recovered on port ${samplePort} — restarting ${toRestart.length} agent(s) for chat integration`);
 
   for (const { key, agentId } of toRestart) {
     try {
       console.log(`[health] Restarting agent ${agentId} for project ${projectId} to gain chat integration`);
       await stopAgentSession(key);
-      await spawnAgentPty(project, agentId);
+      await spawnAgentPty(projectId, agentId);
     } catch (err) {
       console.error(`[health] Failed to restart agent ${agentId}: ${err.message}`);
     }
