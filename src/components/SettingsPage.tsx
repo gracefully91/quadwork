@@ -172,6 +172,8 @@ const COPY = {
     cleanup: "정리",
     cleanupIntro:
       "각 프로젝트는 이제 ~/.quadwork/{id}/agentchattr (~77 MB)에 자체 AgentChattr 클론을 가집니다. 모든 프로젝트 마이그레이션이 끝나면 예전 전역 설치는 제거할 수 있습니다:",
+    cleanupIntroBefore: "각 프로젝트는 이제 ",
+    cleanupIntroAfter: " (~77 MB)에 자체 AgentChattr 클론을 가집니다. 모든 프로젝트 마이그레이션이 끝나면 예전 전역 설치는 제거할 수 있습니다:",
     cleanupSingle: "특정 프로젝트의 클론과 설정 항목만 제거하려면:",
     cleanupHelp:
       "두 명령 모두 확인 절차가 있습니다. 워크트리와 소스 저장소는 건드리지 않습니다. 자세한 내용은 npx quadwork --help 또는 README의 Disk Usage 섹션을 참고하세요.",
@@ -712,11 +714,7 @@ export default function SettingsPage() {
         <h2 className="text-[11px] text-text-muted uppercase tracking-wider mb-3">{t.cleanup}</h2>
         <div className="border border-border p-3 text-[11px] text-text-muted space-y-1">
           <p>
-            {t.cleanupIntro.split("~/.quadwork/{id}/agentchattr")[0]}
-            {" "}<code className="bg-bg-surface px-1 rounded">~/.quadwork/&#123;id&#125;/agentchattr</code>
-            {t.cleanupIntro.includes("~/.quadwork/{id}/agentchattr")
-              ? t.cleanupIntro.split("~/.quadwork/{id}/agentchattr")[1]
-              : ""}
+            {t.cleanupIntroBefore}<code className="bg-bg-surface px-1 rounded">~/.quadwork/&#123;id&#125;/agentchattr</code>{t.cleanupIntroAfter}
           </p>
           <pre className="mt-1 p-2 bg-bg-surface text-text rounded font-mono text-[11px]">npx quadwork cleanup --legacy</pre>
           <p className="mt-2">{t.cleanupSingle}</p>

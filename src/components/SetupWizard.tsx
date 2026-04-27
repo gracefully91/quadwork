@@ -24,14 +24,34 @@ interface Repo {
 
 /* ── Constants ─────────────────────────────────────────────────────────── */
 
+const STEP_LABELS = {
+  en: [
+    { id: "name", label: "Project Name", subtitle: "Name your project" },
+    { id: "repo", label: "GitHub Repo", subtitle: "Connect a repository" },
+    { id: "models", label: "Agent Models", subtitle: "Configure CLI backends" },
+    { id: "workdir", label: "Working Directory", subtitle: "Set the local path" },
+    { id: "workspaces", label: "Create Workspaces", subtitle: "Worktrees + seed files" },
+    { id: "launch", label: "Ready to Launch", subtitle: "Review & start" },
+  ],
+  ko: [
+    { id: "name", label: "프로젝트 이름", subtitle: "프로젝트 이름 정하기" },
+    { id: "repo", label: "GitHub 저장소", subtitle: "저장소 연결하기" },
+    { id: "models", label: "에이전트 모델", subtitle: "CLI 백엔드 구성" },
+    { id: "workdir", label: "작업 디렉터리", subtitle: "로컬 경로 지정" },
+    { id: "workspaces", label: "워크스페이스 생성", subtitle: "워크트리 + 초기 파일" },
+    { id: "launch", label: "실행 준비", subtitle: "검토 후 시작" },
+  ],
+} as const;
+
 function getInitialSteps(locale: "en" | "ko"): Step[] {
+  const labels = STEP_LABELS[locale];
   return [
-    { id: "name", label: locale === "ko" ? "프로젝트 이름" : "Project Name", subtitle: locale === "ko" ? "프로젝트 이름 정하기" : "Name your project", status: "active" },
-    { id: "repo", label: locale === "ko" ? "GitHub 저장소" : "GitHub Repo", subtitle: locale === "ko" ? "저장소 연결하기" : "Connect a repository", status: "pending" },
-    { id: "models", label: locale === "ko" ? "에이전트 모델" : "Agent Models", subtitle: locale === "ko" ? "CLI 백엔드 구성" : "Configure CLI backends", status: "pending" },
-    { id: "workdir", label: locale === "ko" ? "작업 디렉터리" : "Working Directory", subtitle: locale === "ko" ? "로컬 경로 지정" : "Set the local path", status: "pending" },
-    { id: "workspaces", label: locale === "ko" ? "워크스페이스 생성" : "Create Workspaces", subtitle: locale === "ko" ? "워크트리 + 초기 파일" : "Worktrees + seed files", status: "pending" },
-    { id: "launch", label: locale === "ko" ? "실행 준비" : "Ready to Launch", subtitle: locale === "ko" ? "검토 후 시작" : "Review & start", status: "pending" },
+    { ...labels[0], status: "active" },
+    { ...labels[1], status: "pending" },
+    { ...labels[2], status: "pending" },
+    { ...labels[3], status: "pending" },
+    { ...labels[4], status: "pending" },
+    { ...labels[5], status: "pending" },
   ];
 }
 

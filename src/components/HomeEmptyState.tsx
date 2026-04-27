@@ -18,6 +18,7 @@ const COPY = {
     sidebar: "← look at the left sidebar",
     addProject: "Add Your First Project →",
     howToWork: "How to Work",
+    koHelpClass: "",
   },
   ko: {
     headlineHasProjects: "사이드바에서 프로젝트를 골라 작업을 시작하세요",
@@ -27,6 +28,7 @@ const COPY = {
     sidebar: "← 왼쪽 사이드바를 보세요",
     addProject: "첫 프로젝트 추가 →",
     howToWork: "사용 방법",
+    koHelpClass: "ko-help",
   },
 } as const;
 
@@ -50,8 +52,8 @@ export default function HomeEmptyState({ hasProjects }: HomeEmptyStateProps) {
       {/* #446: QuadWork symbol replaces the generic agent-team icon */}
       <img src="/quadwork-symbol.svg" alt="" width={64} height={64} aria-hidden />
 
-      <h1 className={`mt-5 text-lg font-semibold text-text max-w-md whitespace-pre-line ${locale === "ko" ? "ko-help" : ""}`}>{headline}</h1>
-      <p className={`mt-2 text-[12px] text-text-muted leading-relaxed max-w-md whitespace-pre-line ${locale === "ko" ? "ko-help" : ""}`}>{subtext}</p>
+      <h1 className={`mt-5 text-lg font-semibold text-text max-w-md whitespace-pre-line ${t.koHelpClass}`}>{headline}</h1>
+      <p className={`mt-2 text-[12px] text-text-muted leading-relaxed max-w-md whitespace-pre-line ${t.koHelpClass}`}>{subtext}</p>
 
       <div className="mt-5 flex items-center gap-3">
         {hasProjects ? (
