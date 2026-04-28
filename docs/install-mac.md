@@ -80,7 +80,7 @@ npm install -g @anthropic-ai/claude-code
 npm install -g @openai/codex
 
 # Gemini CLI (Google) — if using Gemini agents
-npm install -g @anthropic-ai/claude-code  # placeholder: check Gemini CLI availability
+npm install -g @google/gemini-cli
 ```
 
 ### Authenticate agent CLIs
