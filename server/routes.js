@@ -2176,6 +2176,19 @@ router.post("/api/setup", (req, res) => {
         const wtDir = path.join(parentDir, `${dirName}-${agent}`);
         content += `[agents.${agent}]\ncommand = "${(backends && backends[agent]) || "claude"}"\ncwd = "${wtDir}"\ncolor = "${colors[i]}"\nlabel = "${labels[i]}"\nmcp_inject = "flag"\n\n`;
       });
+      // #592: CLI-based agent sections for AC HEAD compatibility.
+      // HEAD AC validates `base` against [agents.*] keys. Add CLI-name
+      // sections (deduped) so registration works on both pinned and HEAD AC.
+      const seenClis = new Set();
+      agents.forEach((agent) => {
+        const cmd = (backends && backends[agent]) || "claude";
+        const cli = cmd.split("/").pop().split(" ")[0];
+        seenClis.add(cli);
+      });
+      for (const cli of seenClis) {
+        const injectMode = cli === "codex" ? "proxy_flag" : cli === "gemini" ? "env" : "flag";
+        content += `[agents.${cli}]\ncommand = "${cli}"\nlabel = "${cli}"\nmcp_inject = "${injectMode}"\n\n`;
+      }
       // #403 / quadwork#274: raise the loop guard from AC's default
       // of 4 to 30 so autonomous PR review cycles (head→dev→re1+re2→
       // dev→head, ~5 hops) don't fire mid-batch and force the

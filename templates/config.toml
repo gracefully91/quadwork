@@ -37,6 +37,20 @@ cwd = "{{dev_cwd}}"
 color = "#da7756"
 label = "Builder"
 
+# #592: CLI-based agent sections for AC HEAD compatibility.
+# HEAD AC validates `base` against [agents.*] keys in config.toml.
+# These sections let registration succeed with CLI names as base,
+# regardless of whether AC is running pinned or at HEAD.
+[agents.claude]
+command = "claude"
+label = "claude"
+mcp_inject = "flag"
+
+[agents.codex]
+command = "codex"
+label = "codex"
+mcp_inject = "proxy_flag"
+
 # #383: AC's registry rejects bases not declared in config.toml.
 # The Telegram bridge registers as `tg` (#439: renamed from
 # `telegram-bridge`), so every per-project AC config must declare
