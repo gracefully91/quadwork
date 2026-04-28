@@ -918,7 +918,7 @@ async function handleAgentChattr(req, res) {
     // detection on slow starts that triggered ghost agent cascades.
     const ready = await waitForAgentChattrReady(chattrPort, 30000);
     if (ready) {
-      setProc({ process: child, state: "running", error: null });
+      setProc({ process: child, state: "running", error: null, runningSince: Date.now() });
       return child;
     } else {
       setProc({ process: child, state: "error", error: "AgentChattr did not become ready within 30s" });
@@ -2163,10 +2163,10 @@ const _acHealth = {
   // #581: per-project reset state — prevents duplicate resets per restart event.
   // Values: { status: "scheduled"|"succeeded"|"failed", timestamp: number }
   resetState: new Map(),
-  // #579: timestamp when the health monitor started. The first 60s are a
-  // grace period: skip checks so cmdStart spawns and startup migrations
-  // (bridge-migrate, ghost-fix) can settle before the monitor acts.
-  startedAt: 0,
+  // #579: per-project grace period. Projects whose AC entered "running"
+  // within the last 60s are skipped by the health monitor so startup
+  // migrations (bridge-migrate, ghost-fix) and fresh spawns can settle.
+  // Tracked via `runningSince` in chattrProcesses entries.
 };
 
 function isPortAlive(port) {
@@ -2181,16 +2181,17 @@ function isPortAlive(port) {
 }
 
 async function acHealthCheck() {
-  // #579: skip checks during the startup grace period so cmdStart spawns
-  // and startup migrations (bridge-migrate, ghost-fix) can settle.
-  if (_acHealth.startedAt && Date.now() - _acHealth.startedAt < 60_000) return;
-
   const cfg = readConfig();
   for (const project of (cfg.projects || [])) {
     const proc = chattrProcesses.get(project.id);
     // Only monitor projects that were explicitly started (state === "running"
     // or had a process). Skip intentionally stopped projects.
     if (!proc || proc.state === "stopped") continue;
+    // #579: per-project grace period — skip projects whose AC entered
+    // "running" within the last 60s. This lets cmdStart spawns and
+    // startup migrations (bridge-migrate, ghost-fix) settle before the
+    // monitor acts, regardless of when the project was created.
+    if (proc.runningSince && Date.now() - proc.runningSince < 60_000) continue;
 
     const { url } = resolveProjectChattr(project.id);
     const portMatch = url.match(/:(\d+)/);
@@ -2282,9 +2283,8 @@ async function acHealthCheck() {
 
 function startAcHealthMonitor() {
   if (_acHealth.intervalHandle) return;
-  _acHealth.startedAt = Date.now();
   _acHealth.intervalHandle = setInterval(acHealthCheck, 30_000);
-  console.log("[health] AC health monitor started (30s interval, 60s startup grace)");
+  console.log("[health] AC health monitor started (30s interval, per-project 60s grace)");
 }
 
 server.listen(PORT, "127.0.0.1", async () => {
@@ -2304,7 +2304,7 @@ server.listen(PORT, "127.0.0.1", async () => {
       // AC is already running (e.g. spawned by cmdStart). Record it so
       // the health monitor can track it and the dashboard shows the
       // correct state. process is null because we don't own the child.
-      chattrProcesses.set(p.id, { process: null, state: "running", error: null });
+      chattrProcesses.set(p.id, { process: null, state: "running", error: null, runningSince: Date.now() });
       console.log(`[startup] ${p.id}: AC already alive on port ${acPort} — tracking`);
     }
   }
