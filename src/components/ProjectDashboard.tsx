@@ -198,88 +198,94 @@ export default function ProjectDashboard({ projectId }: ProjectDashboardProps) {
   const colTemplate = `${colRatio * 100}% ${DIVIDER}px 1fr`;
   const rowTemplate = `${rowRatio * 100}% ${DIVIDER}px 1fr`;
 
+  // On mobile (<lg): flex column layout, scrollable. Terminals + dividers hidden.
+  // On desktop (lg+): CSS grid 2x2 with resizable dividers (unchanged behavior).
+  // Components are rendered ONCE — layout switching is pure CSS via a scoped
+  // media query that overrides the flex-col to a grid at lg+ breakpoint.
   return (
-    <div
-      ref={containerRef}
-      className="w-full h-full"
-      style={{
-        display: "grid",
-        gridTemplateColumns: colTemplate,
-        gridTemplateRows: rowTemplate,
-      }}
-    >
-      {/* Quadrant 1 (top-left): AgentChattr chat — highlighted as
-          the primary interface (#208). 2px accent border + explicit
-          "primary chat" label in the panel header. */}
-      <div className="flex flex-col overflow-hidden border-2 border-accent">
-        <PanelHeader label={t.chatLabel} tooltip={
-          <InfoTooltip>
-            {t.chatTooltip}
-          </InfoTooltip>
-        }>
-          {filterToggle}
-        </PanelHeader>
-        <div className="flex-1 min-h-0">
-          <ChatPanel projectId={projectId} filterSystem={filterSystem} />
+    <div ref={containerRef} className="w-full h-full">
+      <style>{`
+        @media (min-width: 1024px) {
+          .qw-dashboard {
+            display: grid !important;
+            grid-template-columns: ${colTemplate};
+            grid-template-rows: ${rowTemplate};
+            overflow: hidden !important;
+          }
+        }
+      `}</style>
+      <div className="qw-dashboard flex flex-col w-full h-full overflow-y-auto">
+        {/* Q1: AgentChattr chat — primary interface */}
+        <div className="flex flex-col overflow-hidden border-2 border-accent min-h-[60vh] lg:min-h-0">
+          <PanelHeader label={t.chatLabel} tooltip={
+            <InfoTooltip>
+              {t.chatTooltip}
+            </InfoTooltip>
+          }>
+            {filterToggle}
+          </PanelHeader>
+          <div className="flex-1 min-h-0">
+            <ChatPanel projectId={projectId} filterSystem={filterSystem} />
+          </div>
+          <ControlBar projectId={projectId} />
         </div>
-        <ControlBar projectId={projectId} />
-      </div>
 
-      {/* Vertical divider — top segment */}
-      <div
-        className="bg-border cursor-col-resize hover:bg-accent-dim transition-colors"
-        onMouseDown={() => startDrag("col")}
-      />
-
-      {/* Quadrant 2 (top-right): Agent terminals — 2x2 grid with
-          header + "do not type here" tooltip (#208). */}
-      <div className="flex flex-col overflow-hidden">
-        <AgentTerminalsGrid
-          projectId={projectId}
-          agentStates={agentStates}
-          onStatusChange={updateAgentState}
+        {/* Vertical divider — top segment (desktop only) */}
+        <div
+          className="hidden lg:block bg-border cursor-col-resize hover:bg-accent-dim transition-colors"
+          onMouseDown={() => startDrag("col")}
         />
-      </div>
 
-      {/* Horizontal divider — left segment */}
-      <div
-        className="bg-border cursor-row-resize hover:bg-accent-dim transition-colors"
-        onMouseDown={() => startDrag("row")}
-      />
+        {/* Q2: Agent terminals — hidden on mobile (xterm.js + touch) */}
+        <div className="hidden lg:flex flex-col overflow-hidden">
+          <AgentTerminalsGrid
+            projectId={projectId}
+            agentStates={agentStates}
+            onStatusChange={updateAgentState}
+          />
+        </div>
 
-      {/* Horizontal divider — center intersection */}
-      <div
-        className="bg-border cursor-move"
-        onMouseDown={() => startDrag("col")}
-      />
+        {/* Horizontal divider — left segment (desktop only) */}
+        <div
+          className="hidden lg:block bg-border cursor-row-resize hover:bg-accent-dim transition-colors"
+          onMouseDown={() => startDrag("row")}
+        />
 
-      {/* Horizontal divider — right segment */}
-      <div
-        className="bg-border cursor-row-resize hover:bg-accent-dim transition-colors"
-        onMouseDown={() => startDrag("row")}
-      />
+        {/* Horizontal divider — center intersection (desktop only) */}
+        <div
+          className="hidden lg:block bg-border cursor-move"
+          onMouseDown={() => startDrag("col")}
+        />
 
-      {/* Quadrant 3 (bottom-left): GitHub (#208). */}
-      <div className="flex flex-col overflow-hidden">
-        <PanelHeader label={t.githubLabel} tooltip={
-          <InfoTooltip>
-            {t.githubTooltip}
-          </InfoTooltip>
-        } />
-        <div className="flex-1 min-h-0">
-          <GitHubPanel projectId={projectId} />
+        {/* Horizontal divider — right segment (desktop only) */}
+        <div
+          className="hidden lg:block bg-border cursor-row-resize hover:bg-accent-dim transition-colors"
+          onMouseDown={() => startDrag("row")}
+        />
+
+        {/* Q3: GitHub panel */}
+        <div className="flex flex-col overflow-hidden border-t border-border lg:border-t-0">
+          <PanelHeader label={t.githubLabel} tooltip={
+            <InfoTooltip>
+              {t.githubTooltip}
+            </InfoTooltip>
+          } />
+          <div className="flex-1 min-h-0">
+            <GitHubPanel projectId={projectId} />
+          </div>
+        </div>
+
+        {/* Vertical divider — bottom segment (desktop only) */}
+        <div
+          className="hidden lg:block bg-border cursor-col-resize hover:bg-accent-dim transition-colors"
+          onMouseDown={() => startDrag("col")}
+        />
+
+        {/* Q4: Operator Features */}
+        <div className="border-t border-border lg:border-t-0 flex flex-col overflow-hidden">
+          <OperatorFeaturesPanel projectId={projectId} />
         </div>
       </div>
-
-      {/* Vertical divider — bottom segment */}
-      <div
-        className="bg-border cursor-col-resize hover:bg-accent-dim transition-colors"
-        onMouseDown={() => startDrag("col")}
-      />
-
-      {/* Quadrant 4 (bottom-right): Operator Features (#208) —
-          placeholder container. Sub-tickets #209/#210/#211 fill it. */}
-      <OperatorFeaturesPanel projectId={projectId} />
     </div>
   );
 }
