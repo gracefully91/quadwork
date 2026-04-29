@@ -2330,29 +2330,39 @@ server.listen(PORT, "127.0.0.1", async () => {
   // #457: migrate bridge slugs in AC configs on startup.
   // Renames [agents.discord-bridge] → [agents.dc] and
   // [agents.telegram-bridge] → [agents.tg] so bridges register
-  // under the short slug. Restarts AC for projects whose config changed.
+  // under the short slug. Restarts AC ONLY for slug renames (not
+  // fresh block appends) — #616: script-only patches should not
+  // trigger AC restarts which kill bridge registration.
   for (const p of (startupCfg.projects || [])) {
     const acPath = projectAgentchattrConfigPath(p.id);
     if (!fs.existsSync(acPath)) continue;
     try {
       const before = fs.readFileSync(acPath, "utf-8");
+      // Track whether an actual slug RENAME happened (old → new).
+      // Fresh block appends don't need an AC restart — AC picks them
+      // up on its next natural start.
+      const hadOldDc = /^\[agents\.discord-bridge\]\s*$/m.test(before);
+      const hadOldTg = /^\[agents\.telegram-bridge\]\s*$/m.test(before);
       const dc = patchAgentchattrConfigForDiscordBridge(before);
       const tg = patchAgentchattrConfigForTelegramBridge(dc.text);
       if (dc.changed || tg.changed) {
         fs.writeFileSync(acPath, tg.text);
         console.log(`[bridge-migrate] ${p.id}: migrated AC config slugs`);
-        // Restart AC so it loads the new agent slugs
-        setTimeout(async () => {
-          try {
-            const r = await fetch(`http://127.0.0.1:${PORT}/api/agentchattr/${encodeURIComponent(p.id)}/restart`, {
-              method: "POST",
-            });
-            if (r.ok) console.log(`[bridge-migrate] ${p.id}: restarted AC`);
-            else console.warn(`[bridge-migrate] ${p.id}: AC restart returned ${r.status}`);
-          } catch (err) {
-            console.warn(`[bridge-migrate] ${p.id}: AC restart failed: ${err.message || err}`);
-          }
-        }, 3000);
+        // Only restart AC when a slug was actually RENAMED — not when
+        // a fresh block was appended (#616).
+        if (hadOldDc || hadOldTg) {
+          setTimeout(async () => {
+            try {
+              const r = await fetch(`http://127.0.0.1:${PORT}/api/agentchattr/${encodeURIComponent(p.id)}/restart`, {
+                method: "POST",
+              });
+              if (r.ok) console.log(`[bridge-migrate] ${p.id}: restarted AC`);
+              else console.warn(`[bridge-migrate] ${p.id}: AC restart returned ${r.status}`);
+            } catch (err) {
+              console.warn(`[bridge-migrate] ${p.id}: AC restart failed: ${err.message || err}`);
+            }
+          }, 3000);
+        }
       }
     } catch {}
   }
