@@ -37,14 +37,48 @@ You're now in Ubuntu. All following steps happen inside this shell.
 
 ---
 
-## Step 3: Follow the Mac Installation Guide
+## Step 3: Install Prerequisites (Ubuntu/WSL2)
 
-From here, the setup is identical to macOS. Follow **[docs/install-mac.md](install-mac.md)** starting from Step 1 (nvm + Node.js).
+These replace the macOS-specific steps (Homebrew, Xcode) in the Mac guide.
+
+**Node.js 24** (via nvm):
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+source ~/.bashrc
+nvm install 24
+nvm use 24
+```
+
+**Python 3 + venv** (required for AgentChattr):
+```bash
+sudo apt-get update
+sudo apt-get install -y python3 python3-venv git
+```
+
+**GitHub CLI:**
+```bash
+curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main' | sudo tee /etc/apt/sources.list.d/github-cli.list
+sudo apt-get update && sudo apt-get install -y gh
+```
+
+**Authenticate GitHub CLI:**
+```bash
+gh auth login
+```
+
+> **This is interactive** — the operator must complete the browser-based auth flow.
+
+---
+
+## Step 4: Follow the Mac Guide (from "Install AI Coding Agents")
+
+From here, the setup is identical. Follow **[docs/install-mac.md](install-mac.md)** starting from the **"Install AI Coding Agents"** section.
 
 This includes:
-- nvm + Node.js 24
-- GitHub CLI (`gh auth login`)
 - Claude Code + Codex CLI
+- CLI authentication
 - `npm install -g quadwork@latest`
 - `npx quadwork init`
 
