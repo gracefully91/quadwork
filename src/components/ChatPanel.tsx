@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import ProjectChatEmptyState from "./ProjectChatEmptyState";
+import ChatPresets from "./ChatPresets";
 
 interface Attachment {
   path: string;
@@ -350,6 +351,31 @@ function ChatPanelAPI({ projectId, filterSystem = false }: { projectId?: string;
       .finally(() => setSending(false));
   };
 
+  const sendPreset = useCallback((message: string) => {
+    if (sending) return;
+    // Apply same routing normalization as send(): prepend @head if no
+    // agent mention or slash command at the start.
+    const STARTS_WITH_AGENT_RE = /^@(head|dev|re1|re2)\b/i;
+    const startsWithSlash = message.startsWith("/");
+    const text = (startsWithSlash || STARTS_WITH_AGENT_RE.test(message)) ? message : `@head ${message}`;
+    setSending(true);
+    setSendError(null);
+    fetch(`/api/chat${projectId ? `?project=${encodeURIComponent(projectId)}` : ""}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, channel, sender: "user" }),
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error(`Send failed: ${r.status}`);
+        setTimeout(fetchMessages, 300);
+      })
+      .catch((err) => {
+        setSendError(err.message);
+        console.error(err.message);
+      })
+      .finally(() => setSending(false));
+  }, [sending, projectId, channel, fetchMessages]);
+
   // @mention + slash command handling
   const handleInput = (value: string) => {
     setInput(value);
@@ -558,7 +584,7 @@ function ChatPanelAPI({ projectId, filterSystem = false }: { projectId?: string;
             composition is guarded via isComposingRef + the native
             `isComposing` flag on the event. Height follows content
             up to CHAT_INPUT_MAX_PX (~6 lines), then scrolls. */}
-        <div className="flex items-end gap-1 px-1">
+        <div className="flex items-end gap-1 px-1 relative">
           <textarea
             ref={inputRef}
             rows={1}
@@ -660,6 +686,7 @@ function ChatPanelAPI({ projectId, filterSystem = false }: { projectId?: string;
               e.target.value = "";
             }}
           />
+          <ChatPresets projectId={projectId || ""} onSend={sendPreset} />
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
