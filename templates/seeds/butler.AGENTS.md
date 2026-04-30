@@ -105,10 +105,12 @@ For any feature with a frontend component, include:
 - Exact text for all labels, buttons, tooltips, error messages
 - Placeholder text for inputs
 - Empty state messages
+- For Korean localization: include both en/ko COPY dictionary entries
 
 ### Component behavior
 - Hover/active/disabled states
 - Transitions and animations (use existing patterns: `transition-colors`, `duration-200`)
+- Mobile vs desktop differences
 - Loading states
 
 ### Reference existing patterns
