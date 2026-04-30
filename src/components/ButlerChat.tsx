@@ -15,8 +15,7 @@ const COPY = {
     send: "Send",
     startButler: "Start Butler",
     starting: "Starting...",
-    butlerDisabled: "Butler is not enabled.",
-    enableInSettings: "Enable in Settings →",
+    loading: "Loading...",
   },
   ko: {
     butlerAgent: "버틀러 에이전트",
@@ -26,21 +25,15 @@ const COPY = {
     send: "전송",
     startButler: "버틀러 시작",
     starting: "시작 중...",
-    butlerDisabled: "버틀러가 활성화되지 않았습니다.",
-    enableInSettings: "설정에서 활성화 →",
+    loading: "로딩 중...",
   },
 } as const;
-
-interface ButlerStatus {
-  enabled: boolean;
-  running: boolean;
-}
 
 export default function ButlerChat() {
   const { locale } = useLocale();
   const t = COPY[locale];
 
-  const [status, setStatus] = useState<ButlerStatus>({ enabled: false, running: false });
+  const [running, setRunning] = useState<boolean | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [starting, setStarting] = useState(false);
   const [input, setInput] = useState("");
@@ -49,21 +42,28 @@ export default function ButlerChat() {
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch butler config + status on mount
+  // Fetch butler status on mount (enabled is already known from parent)
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      fetch("/api/config").then((r) => r.ok ? r.json() : null),
-      fetch("/api/butler/status").then((r) => r.ok ? r.json() : null),
-    ]).then(([cfg, st]) => {
-      if (cancelled) return;
-      const enabled = !!(cfg?.butler?.enabled);
-      const running = !!(st?.running);
-      setStatus({ enabled, running });
-    }).catch(() => {});
+    fetch("/api/butler/status")
+      .then((r) => r.ok ? r.json() : null)
+      .then((st) => {
+        if (cancelled) return;
+        setRunning(!!(st?.running));
+      })
+      .catch(() => { setRunning(false); });
     return () => { cancelled = true; };
   }, []);
+
+  // Auto-focus input on expand
+  useEffect(() => {
+    if (!collapsed && running) {
+      // Delay to let DOM render the input
+      requestAnimationFrame(() => inputRef.current?.focus());
+    }
+  }, [collapsed, running]);
 
   const fit = useCallback(() => {
     if (fitRef.current && termRef.current && containerRef.current) {
@@ -83,7 +83,7 @@ export default function ButlerChat() {
 
   // Connect xterm + WebSocket when running and not collapsed
   useEffect(() => {
-    if (!status.running || collapsed || !containerRef.current) return;
+    if (!running || collapsed || !containerRef.current) return;
 
     const term = new Terminal({
       scrollback: 1000,
@@ -199,7 +199,7 @@ export default function ButlerChat() {
         }
         if (cancelled) return;
         term.write(`\r\n\x1b[38;2;115;115;115m[session closed: ${e.reason || e.code}]\x1b[0m\r\n`);
-        setStatus((prev) => ({ ...prev, running: false }));
+        setRunning(false);
       };
     };
 
@@ -214,7 +214,7 @@ export default function ButlerChat() {
       fitRef.current = null;
       wsRef.current = null;
     };
-  }, [status.running, collapsed, fit]);
+  }, [running, collapsed, fit]);
 
   const handleStart = async () => {
     setStarting(true);
@@ -222,7 +222,7 @@ export default function ButlerChat() {
       const res = await fetch("/api/butler/start", { method: "POST" });
       const data = await res.json();
       if (data.ok) {
-        setStatus({ enabled: true, running: true });
+        setRunning(true);
       }
     } catch {}
     setStarting(false);
@@ -238,8 +238,19 @@ export default function ButlerChat() {
     }
   };
 
-  // Not enabled — don't render
-  if (!status.enabled) return null;
+  // Still loading status
+  if (running === null) {
+    return (
+      <div className="mb-6 border border-border bg-bg-surface">
+        <div className="flex items-center px-4 py-2">
+          <span className="flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-text-muted animate-pulse" />
+            <span className="text-[11px] font-semibold text-text">{t.butlerAgent}</span>
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   // Collapsed state
   if (collapsed) {
@@ -251,7 +262,7 @@ export default function ButlerChat() {
           className="w-full flex items-center justify-between px-4 py-2 text-[11px] text-text-muted hover:text-text transition-colors"
         >
           <span className="flex items-center gap-2">
-            <span className={`w-1.5 h-1.5 rounded-full ${status.running ? "bg-accent" : "bg-text-muted"}`} />
+            <span className={`w-1.5 h-1.5 rounded-full ${running ? "bg-accent" : "bg-text-muted"}`} />
             <span className="font-semibold text-text">{t.butlerAgent}</span>
           </span>
           <span>▸ {t.expand}</span>
@@ -261,7 +272,7 @@ export default function ButlerChat() {
   }
 
   // Enabled but not running — show start button
-  if (!status.running) {
+  if (!running) {
     return (
       <div className="mb-6 border border-border bg-bg-surface">
         <div className="flex items-center justify-between px-4 py-2 border-b border-border">
@@ -315,6 +326,7 @@ export default function ButlerChat() {
       {/* Input bar */}
       <div className="flex items-center gap-2 px-3 py-2 border-t border-border shrink-0">
         <input
+          ref={inputRef}
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
