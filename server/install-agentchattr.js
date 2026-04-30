@@ -280,7 +280,7 @@ function patchCrashTimeout(dir) {
         "# Crash timeout: if a wrapper hasn't heartbeated for 120s,\n",
       );
       fs.writeFileSync(appPath, app);
-      console.log(`[idle-fix] ${path.basename(path.dirname(dir)) || dir}: patched crash timeout to 120s at clone time (#629)`);
+      console.log(`[idle-fix] patched crash timeout to 120s at clone time (#629): ${dir}`);
     }
   } catch (err) {
     console.warn(`[idle-fix] failed to patch crash timeout in ${appPath}: ${err.message}`);
