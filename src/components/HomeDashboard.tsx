@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import HomeEmptyState from "./HomeEmptyState";
+import ButlerChat from "./ButlerChat";
 import { useLocale } from "@/components/LocaleProvider";
 
 const COPY = {
@@ -97,6 +98,7 @@ export default function HomeDashboard() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [activity, setActivity] = useState<ActivityEvent[]>([]);
   const [projectsState, setProjectsState] = useState<"loading" | "loaded" | "error">("loading");
+  const [butlerEnabled, setButlerEnabled] = useState(false);
 
   useEffect(() => {
     fetch("/api/projects")
@@ -114,6 +116,13 @@ export default function HomeDashboard() {
       .catch(() => {
         setProjectsState("error");
       });
+
+    fetch("/api/config")
+      .then((r) => r.ok ? r.json() : null)
+      .then((cfg) => {
+        if (cfg?.butler?.enabled) setButlerEnabled(true);
+      })
+      .catch(() => {});
   }, []);
 
   if (projectsState === "loading") {
@@ -129,11 +138,14 @@ export default function HomeDashboard() {
       <div className="lg:grid lg:grid-cols-[1fr_340px] lg:gap-6 lg:flex-1 lg:min-h-0">
         {/* Left column: hero + header + project cards */}
         <div className="lg:overflow-y-auto lg:min-h-0">
-          {projectsState === "loaded" && (
+          {/* #633: Butler chat replaces hero when enabled */}
+          {butlerEnabled ? (
+            <ButlerChat />
+          ) : projectsState === "loaded" ? (
             <div className="mb-6">
               <HomeEmptyState hasProjects={projects.length > 0} />
             </div>
-          )}
+          ) : null}
           {projectsState === "error" && (
             <div className="mb-6 border border-error/30 bg-error/5 text-error text-[11px] px-3 py-2">
               {t.loadError}
