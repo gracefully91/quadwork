@@ -427,11 +427,15 @@ export default function SettingsPage() {
   const toggleButler = async () => {
     setButlerBusy(true);
     try {
-      const url = butlerRunning ? "/api/butler/stop" : "/api/butler/start";
+      const stopping = butlerRunning;
+      const url = stopping ? "/api/butler/stop" : "/api/butler/start";
       const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
       if (r.ok) {
-        refreshButlerStatus();
-        updateButler({ enabled: !butlerRunning });
+        const data = await r.json();
+        if (stopping || data.ok) {
+          refreshButlerStatus();
+          updateButler({ enabled: !stopping });
+        }
       }
     } finally {
       setButlerBusy(false);
